@@ -1,0 +1,8 @@
+{% extends "fuel/base.html" %}
+{% block content %}
+<h2>Вхід</h2>
+<form method="post">{% csrf_token %}
+  {{ form.as_p }}
+  <button>Увійти</button>
+</form>
+{% endblock %}

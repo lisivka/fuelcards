@@ -1,0 +1,217 @@
+{% extends "fuel/base.html" %}
+{% block extra_head %}
+<style>
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pill{border:1px solid #1f3a5f;background:#fff;color:#1f3a5f;border-radius:16px;cursor:pointer}
+.pill.active{background:#1f3a5f;color:#fff}
+td input.v,td input.d{width:100%;box-sizing:border-box}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;background:#ddd}
+.badge.s0{background:#c8f0cf}.badge.s1{background:#f6c6c6}.badge.s2,.badge.s3{background:#e2e2e2}
+.msg{display:none;padding:8px 12px;margin-bottom:10px;border-radius:4px}
+.msg.ok{display:block;background:#d9f2de}.msg.err{display:block;background:#f8d7da}
+details{margin-bottom:12px;background:#fff;padding:8px 12px;border:1px solid #e3e5e8}
+details form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.muted{color:#777;font-size:12px}
+td.act{white-space:nowrap}
+</style>
+{% endblock %}
+{% block content %}
+<div id="app" data-csrf="{{ csrf_token }}">
+<div id="msg" class="msg"></div>
+
+<div class="toolbar">
+  <span id="pills">
+    <button type="button" class="pill active" data-p="">Всі</button>
+    {% for value, label in providers %}<button type="button" class="pill" data-p="{{ value }}">{{ label }}</button>{% endfor %}
+  </span>
+  <input id="f-number" type="search" placeholder="Номер картки…">
+  <input id="f-vehicle" type="search" placeholder="Авто…">
+  <input id="f-driver" type="search" placeholder="ПІБ…">
+  <span id="count" class="muted"></span>
+  {% if sync_available %}<button type="button" id="sync-btn">Оновити статуси UkrNafta</button>{% endif %}
+</div>
+
+<details>
+  <summary>Додати картку (лише в нашій базі)</summary>
+  <form id="add-form">
+    <select name="provider">{% for value, label in providers %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+    <input name="number" placeholder="Номер картки" required>
+    <input name="vehicle" placeholder="Авто">
+    <input name="driver_name" placeholder="ПІБ водія">
+    <button>Додати</button>
+  </form>
+</details>
+
+<table id="tbl">
+<thead><tr><th>Постачальник</th><th>Номер картки</th><th>Авто</th><th>ПІБ водія</th><th>Статус</th><th>Дії</th></tr></thead>
+<tbody>
+{% for r in rows %}
+<tr data-id="{{ r.id }}" data-provider="{{ r.provider }}" data-number="{{ r.number }}"
+    data-status="{{ r.status|default_if_none:'' }}" data-editable="{% if r.editable %}1{% endif %}">
+  <td>{{ r.provider_label }}</td>
+  <td>{{ r.number }}</td>
+  <td><input class="v" value="{{ r.vehicle }}" maxlength="120"></td>
+  <td><input class="d" value="{{ r.driver_name }}" maxlength="120"></td>
+  <td>
+    <span class="badge s{{ r.status|default_if_none:'x' }}">{{ r.status_label }}</span>
+    <button type="button" class="st-btn"></button>
+    <div class="muted st-time">{% if r.status_updated %}{{ r.status_updated|date:"d.m.Y H:i" }}{% endif %}</div>
+  </td>
+  <td class="act">
+    <button type="button" class="save-btn">Зберегти Авто/ПІБ</button>
+    <button type="button" class="del-btn">Видалити</button>
+  </td>
+</tr>
+{% empty %}
+<tr><td colspan="6">Карток поки немає{% if sync_available %}. Натисніть «Оновити статуси UkrNafta»{% endif %}.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<script>
+(function () {
+  var csrf = document.getElementById("app").dataset.csrf;
+  var LABEL = {0: "Активна", 1: "Заблокована", 2: "Неактивна", 3: "Замінена"};
+  var tbody = document.querySelector("#tbl tbody");
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr[data-id]"));
+  var provider = "";
+
+  function flash(text, ok) {
+    var m = document.getElementById("msg");
+    m.textContent = text;
+    m.className = "msg " + (ok ? "ok" : "err");
+    clearTimeout(flash.t);
+    flash.t = setTimeout(function () { m.className = "msg"; }, 7000);
+  }
+
+  function post(url, data) {
+    return fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": csrf},
+      body: JSON.stringify(data || {})
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) { throw new Error(j.error || ("HTTP " + r.status)); }
+        return j;
+      });
+    });
+  }
+
+  // ---- фільтри (миттєві, на клієнті) ----
+  function applyFilters() {
+    var n = document.getElementById("f-number").value.trim().toLowerCase();
+    var v = document.getElementById("f-vehicle").value.trim().toLowerCase();
+    var d = document.getElementById("f-driver").value.trim().toLowerCase();
+    var shown = 0;
+    rows.forEach(function (tr) {
+      var ok = (!provider || tr.dataset.provider === provider) &&
+        (!n || tr.dataset.number.toLowerCase().indexOf(n) !== -1) &&
+        (!v || tr.querySelector(".v").value.toLowerCase().indexOf(v) !== -1) &&
+        (!d || tr.querySelector(".d").value.toLowerCase().indexOf(d) !== -1);
+      tr.style.display = ok ? "" : "none";
+      if (ok) { shown++; }
+    });
+    document.getElementById("count").textContent = "Показано " + shown + " з " + rows.length;
+  }
+  document.getElementById("pills").addEventListener("click", function (e) {
+    var b = e.target.closest(".pill");
+    if (!b) { return; }
+    provider = b.dataset.p;
+    document.querySelectorAll(".pill").forEach(function (p) { p.classList.toggle("active", p === b); });
+    applyFilters();
+  });
+  ["f-number", "f-vehicle", "f-driver"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", applyFilters);
+  });
+
+  // ---- відображення статусу ----
+  function renderStatus(tr, status, updated) {
+    tr.dataset.status = (status === null || status === undefined) ? "" : status;
+    var badge = tr.querySelector(".badge");
+    badge.className = "badge s" + (tr.dataset.status === "" ? "x" : status);
+    badge.textContent = tr.dataset.status === "" ? "—" : LABEL[status];
+    var btn = tr.querySelector(".st-btn");
+    var editable = tr.dataset.editable === "1";
+    if (status === 0) { btn.textContent = "Заблокувати"; }
+    else if (status === 1) { btn.textContent = "Розблокувати"; }
+    else { btn.textContent = "—"; }
+    btn.disabled = !(editable && (status === 0 || status === 1));
+    btn.style.display = editable ? "" : "none";
+    if (updated !== undefined) {
+      var t = tr.querySelector(".st-time");
+      t.textContent = updated ? new Date(updated).toLocaleString("uk-UA") : "";
+    }
+  }
+  rows.forEach(function (tr) {
+    var s = tr.dataset.status;
+    renderStatus(tr, s === "" ? null : parseInt(s, 10));
+  });
+
+  // ---- дії у рядку ----
+  tbody.addEventListener("click", function (e) {
+    var tr = e.target.closest("tr[data-id]");
+    if (!tr) { return; }
+    var id = tr.dataset.id;
+    var btn = e.target.closest("button");
+    if (!btn) { return; }
+
+    if (btn.classList.contains("st-btn")) {
+      var cur = parseInt(tr.dataset.status, 10);
+      var next = cur === 0 ? 1 : 0;
+      if (!confirm((next === 1 ? "Заблокувати" : "Розблокувати") + " картку " + tr.dataset.number + "?")) { return; }
+      btn.disabled = true;
+      post("/cards/" + id + "/status/", {status: next}).then(function (j) {
+        renderStatus(tr, j.card.status, j.card.status_updated);
+        flash("Статус картки " + tr.dataset.number + ": " + j.card.status_label, true);
+      }).catch(function (err) {
+        flash(err.message, false);
+        renderStatus(tr, cur);
+      });
+    } else if (btn.classList.contains("save-btn")) {
+      btn.disabled = true;
+      post("/cards/" + id + "/info/", {
+        vehicle: tr.querySelector(".v").value,
+        driver_name: tr.querySelector(".d").value
+      }).then(function (j) {
+        tr.querySelector(".v").value = j.card.vehicle;
+        tr.querySelector(".d").value = j.card.driver_name;
+        flash("Збережено: " + tr.dataset.number, true);
+      }).catch(function (err) { flash(err.message, false); })
+        .then(function () { btn.disabled = false; });
+    } else if (btn.classList.contains("del-btn")) {
+      if (!confirm("Видалити картку " + tr.dataset.number + " з нашої бази? (у провайдера вона залишиться)")) { return; }
+      post("/cards/" + id + "/delete/").then(function () {
+        tr.remove();
+        rows = rows.filter(function (r) { return r !== tr; });
+        applyFilters();
+      }).catch(function (err) { flash(err.message, false); });
+    }
+  });
+
+  // ---- додавання та синхронізація ----
+  document.getElementById("add-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var f = e.target;
+    post("/cards/create/", {
+      provider: f.provider.value, number: f.number.value,
+      vehicle: f.vehicle.value, driver_name: f.driver_name.value
+    }).then(function () { location.reload(); })
+      .catch(function (err) { flash(err.message, false); });
+  });
+
+  var sync = document.getElementById("sync-btn");
+  if (sync) {
+    sync.addEventListener("click", function () {
+      sync.disabled = true;
+      post("/cards/sync/").then(function (j) {
+        flash("Оновлено. Нових: " + j.created + ", оновлено: " + j.updated, true);
+        setTimeout(function () { location.reload(); }, 800);
+      }).catch(function (err) { flash(err.message, false); sync.disabled = false; });
+    });
+  }
+
+  applyFilters();
+})();
+</script>
+{% endblock %}

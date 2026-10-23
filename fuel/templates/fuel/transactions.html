@@ -1,0 +1,52 @@
+{% extends "fuel/base.html" %}
+{% block content %}
+<form method="get" class="filters">
+  <label>З <input type="date" name="from" value="{{ d_from|date:'Y-m-d' }}"></label>
+  <label>По <input type="date" name="to" value="{{ d_to|date:'Y-m-d' }}"></label>
+  <label>Постачальник
+    <select name="provider">
+      <option value="">Усі</option>
+      {% for value, label in providers %}<option value="{{ value }}" {% if value == provider %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Пошук <input type="search" name="q" value="{{ q }}" placeholder="авто / картка / АЗС"></label>
+  <button>Показати</button>
+  <a href="?{{ query }}&export=csv">Експорт CSV</a>
+</form>
+
+<div class="totals">
+  Заправок: {{ totals.n }} · Літрів: {{ totals.liters|default:0|floatformat:2 }} · Сума: {{ totals.amount|default:0|floatformat:2 }} грн
+  <small>(Petroline не віддає суму, тож сума неповна)</small>
+</div>
+
+<table>
+<thead><tr>
+  <th>Дата</th><th>Пост.</th><th>Тип</th><th>Картка</th><th>Авто</th><th>Пальне</th>
+  <th class="n">Літри</th><th class="n">Ціна</th><th class="n">Сума</th><th>АЗС</th>
+</tr></thead>
+<tbody>
+{% for t in page %}
+<tr class="{% if t.canceled %}canceled{% endif %} {% if t.kind == 'topup' %}topup{% endif %}">
+  <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
+  <td>{{ t.get_provider_display }}</td>
+  <td>{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
+  <td>{{ t.card_ref }}</td>
+  <td>{{ t.vehicle_display }}</td>
+  <td>{{ t.fuel }}</td>
+  <td class="n">{{ t.liters|default_if_none:""|floatformat:2 }}</td>
+  <td class="n">{{ t.price|default_if_none:""|floatformat:2 }}</td>
+  <td class="n">{{ t.amount|default_if_none:""|floatformat:2 }}</td>
+  <td>{{ t.station }}</td>
+</tr>
+{% empty %}
+<tr><td colspan="10">Немає даних за обраний період</td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+<div class="pager">
+  {% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}">← Назад</a>{% endif %}
+  Сторінка {{ page.number }} з {{ page.paginator.num_pages }}
+  {% if page.has_next %}<a href="?{{ query }}&page={{ page.next_page_number }}">Далі →</a>{% endif %}
+</div>
+{% endblock %}
