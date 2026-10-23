@@ -7,10 +7,24 @@ class Provider(models.TextChoices):
     UKRNAFTA = "ukrnafta", "UkrNafta"
 
 
+class CardStatus(models.IntegerChoices):
+    BLOCKED = 0, "Заблокована"
+    ACTIVE = 1, "Активна"
+
+
 class Card(models.Model):
     provider = models.CharField("Постачальник", max_length=20, choices=Provider.choices)
     number = models.CharField("Номер картки", max_length=64)
     vehicle = models.CharField("Авто / водій", max_length=120, blank=True)
+    driver_name = models.CharField("ПІБ водія", max_length=120, blank=True)
+    status = models.PositiveSmallIntegerField(
+        "Статус картки",
+        choices=CardStatus.choices,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    status_updated_at = models.DateTimeField("Останнє оновлення статусу", null=True, blank=True)
     note = models.CharField("Примітка", max_length=200, blank=True)
 
     class Meta:
@@ -22,7 +36,32 @@ class Card(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.get_provider_display()} {self.number} {self.vehicle}".strip()
+        return f"{self.get_provider_display()} {self.number} {self.vehicle} {self.driver_name}".strip()
+
+
+class ProviderConfig(models.Model):
+    code = models.CharField("Код провайдера", max_length=20, unique=True)
+    is_active = models.BooleanField("Активний", default=True)
+    edit_enabled = models.BooleanField("Можна змінювати картки", default=True)
+
+    class Meta:
+        verbose_name = "Конфігурація провайдера"
+        verbose_name_plural = "Конфігурації провайдерів"
+        ordering = ["code"]
+
+    @classmethod
+    def ensure_all(cls):
+        configs = {}
+        for code, _label in Provider.choices:
+            config, _ = cls.objects.get_or_create(
+                code=code,
+                defaults={"is_active": True, "edit_enabled": True},
+            )
+            configs[code] = config
+        return configs
+
+    def __str__(self):
+        return self.code
 
 
 class Transaction(models.Model):
@@ -63,9 +102,3 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.provider}:{self.external_id}"
-
-#
-# class ProviderConfig(models.Model):
-#     code = models.CharField(max_length=20, unique=True)
-#     is_active = models.BooleanField(default=True)
-#     edit_enabled = models.BooleanField(default=True)
