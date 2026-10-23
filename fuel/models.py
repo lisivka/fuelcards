@@ -64,8 +64,8 @@ class Transaction(models.Model):
     def __str__(self):
         return f"{self.provider}:{self.external_id}"
 
-
-class ProviderConfig(models.Model):
-    code = models.CharField(max_length=20, unique=True)
-    is_active = models.BooleanField(default=True)
-    edit_enabled = models.BooleanField(default=True)
+#
+# class ProviderConfig(models.Model):
+#     code = models.CharField(max_length=20, unique=True)
+#     is_active = models.BooleanField(default=True)
+#     edit_enabled = models.BooleanField(default=True)
