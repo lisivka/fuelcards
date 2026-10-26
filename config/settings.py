@@ -10,6 +10,7 @@ print(f"--- Поточний робочий каталог: {BASE_DIR} ---")
 # print(f"--- Поточний користувач: {os.getlogin()} ---")
 UKRNAFTA_TOKEN = os.environ.get("UKRNAFTA_TOKEN", "dev-only-change-me")
 UKRNAFTA_HOLDER_ID = os.environ.get("UKRNAFTA_HOLDER_ID", "dev-only-change-me")
+print(f"--- UKRNAFTA_TOKEN: {UKRNAFTA_TOKEN[:10]}... ---")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("DEBUG", "1") == "1"
