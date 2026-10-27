@@ -1,34 +1,20 @@
 import os
-import hashlib
-import os
+
 import requests
 
 BASE = "https://naftacards.ukrnafta.com/public-api"
 
 
 class UkrnaftaError(RuntimeError):
+    print(f"{__file__}: UkrnaftaError: {RuntimeError}")
     pass
 
 
 class UkrnaftaCards:
     """Робота з картками UkrNafta: список зі статусами та оновлення картки."""
 
-    # def _headers(self):
-    #     return {
-    #         "Accept": "application/json",
-    #         "Authorization": f"Bearer {os.environ['UKRNAFTA_TOKEN']}",
-    #     }
     def _headers(self):
-        token = os.environ.get("UKRNAFTA_TOKEN", "")
-        print("UkrNafta token length:", len(token))
         token = os.environ.get("UKRNAFTA_TOKEN", "").strip()
-
-        print("UkrNafta token length:", len(token))
-        print(
-            "UkrNafta token fingerprint:",
-            hashlib.sha256(token.encode()).hexdigest()[:12],
-        )
-
         if not token:
             raise UkrnaftaError("UKRNAFTA_TOKEN не заданий")
 
