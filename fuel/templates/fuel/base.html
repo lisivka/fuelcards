@@ -23,6 +23,13 @@ td.n,th.n{text-align:right}
 .topup{background:#f0f8ff}
 .totals{margin:10px 0;font-weight:600}
 .pager{margin-top:12px}
+.messages{list-style:none;margin:0 0 15px;padding:0}
+.messages li{padding:8px 12px;margin-bottom:6px;border-radius:4px;border:1px solid #ccc;background:#fff}
+.messages li.success{background:#e6f4ea;border-color:#9ccc9c}
+.messages li.info{background:#e8f0fe;border-color:#a7bff0}
+.messages li.warning{background:#fff4e0;border-color:#f0c070}
+.messages li.error{background:#fdecea;border-color:#e8a09a}
+.sync-form{display:inline-block;margin:0 0 10px}
 </style>
 {% block extra_head %}{% endblock %}
 </head>
@@ -44,6 +51,13 @@ td.n,th.n{text-align:right}
     <a href="{% url 'login' %}">Вхід</a>
   {% endif %}
 </header>
-<main>{% block content %}{% endblock %}</main>
+<main>
+{% if messages %}
+<ul class="messages">
+{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
 </body>
 </html>

@@ -20,7 +20,9 @@ class Command(BaseCommand):
         names = opts["provider"] or list(PROVIDERS)
         self.stdout.write(f"Синхронізація {date_from} .. {today}: {', '.join(names)}")
         for name, res in run_sync(names, date_from, today).items():
-            if isinstance(res, tuple):
+            if res is None:
+                self.stdout.write(self.style.WARNING(f"{name}: пропущено (провайдер неактивний)"))
+            elif isinstance(res, tuple):
                 self.stdout.write(self.style.SUCCESS(f"{name}: нових {res[0]}, оновлено {res[1]}"))
             else:
                 self.stdout.write(self.style.ERROR(f"{name}: {res}"))

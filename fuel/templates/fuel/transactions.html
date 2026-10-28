@@ -11,7 +11,14 @@
   </label>
   <label>Пошук <input type="search" name="q" value="{{ q }}" placeholder="авто / картка / АЗС"></label>
   <button>Показати</button>
+  <button type="submit" form="sync-form" id="sync-btn">Синхронізувати</button>
   <a href="?{{ query }}&export=csv">Експорт CSV</a>
+</form>
+
+<form method="post" action="{% url 'transactions_sync' %}" id="sync-form" hidden
+      onsubmit="var b=document.getElementById('sync-btn');b.disabled=true;b.textContent='Синхронізація…';">
+  {% csrf_token %}
+  <input type="hidden" name="query" value="{{ query }}">
 </form>
 
 <div class="totals">

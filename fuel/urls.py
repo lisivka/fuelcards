@@ -4,6 +4,7 @@ from . import card_views, views
 
 urlpatterns = [
     path("", views.transactions, name="transactions"),
+    path("sync/", views.transactions_sync, name="transactions_sync"),
     path("cards/", card_views.cards, name="cards"),
     path("cards/create/", card_views.card_create, name="card_create"),
     path("cards/sync/", card_views.cards_sync, name="cards_sync"),

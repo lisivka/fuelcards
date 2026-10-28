@@ -1,15 +1,22 @@
 import csv
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.views.decorators.http import require_POST
 
 from .models import Provider, Transaction
+from .services import MAX_CATCHUP_DAYS, sync_since_last
+
+# Параметри фільтрів, які дозволено повернути в адресу після синхронізації
+_FILTER_KEYS = {"from", "to", "provider", "q", "page"}
 
 
 @login_required
@@ -43,6 +50,42 @@ def transactions(request):
         "page": page, "totals": totals, "d_from": d_from, "d_to": d_to,
         "provider": provider, "q": q, "providers": Provider.choices, "query": query,
     })
+
+
+@login_required
+@require_POST
+def transactions_sync(request):
+    """Ручна синхронізація: від дня останньої транзакції кожного провайдера до сьогодні."""
+    results, capped = sync_since_last()
+
+    fetched = {name: res for name, res in results.items() if isinstance(res, tuple)}
+    if fetched:
+        total_new = sum(res[0] for res in fetched.values())
+        if total_new:
+            details = ", ".join(f"{Provider(name).label}: {res[0]}" for name, res in fetched.items())
+            messages.success(request, f"Додано нових транзакцій: {total_new} ({details}).")
+        else:
+            messages.info(request, "Нових транзакцій немає.")
+
+    for name, res in results.items():
+        label = Provider(name).label
+        if res is None:
+            messages.info(request, f"{label}: пропущено (провайдер неактивний).")
+        elif not isinstance(res, tuple):
+            messages.error(request, f"{label}: помилка синхронізації, деталі в журналі.")
+
+    for name in capped:
+        messages.warning(
+            request,
+            f"{Provider(name).label}: розрив більший за {MAX_CATCHUP_DAYS} днів, завантажено лише "
+            f"останні {MAX_CATCHUP_DAYS}. Для більшого періоду: manage.py sync_fuel --days N.",
+        )
+
+    params = [(k, v) for k, v in parse_qsl(request.POST.get("query", "")) if k in _FILTER_KEYS]
+    url = reverse("transactions")
+    if params:
+        url += "?" + urlencode(params)
+    return redirect(url)
 
 
 def _export_csv(qs, d_from, d_to):

@@ -5,12 +5,9 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
-print(f"--- Завантажено змінні середовища з файлу .env ---")
-print(f"--- Поточний робочий каталог: {BASE_DIR} ---")
-# print(f"--- Поточний користувач: {os.getlogin()} ---")
+
 UKRNAFTA_TOKEN = os.environ.get("UKRNAFTA_TOKEN", "dev-only-change-me")
 UKRNAFTA_HOLDER_ID = os.environ.get("UKRNAFTA_HOLDER_ID", "dev-only-change-me")
-print(f"--- UKRNAFTA_TOKEN: {UKRNAFTA_TOKEN[:10]}... ---")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("DEBUG", "1") == "1"
@@ -82,3 +79,24 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "transactions"
 LOGOUT_REDIRECT_URL = "login"
+
+# Логування: усе йде в stderr (під systemd його збирає journalctl).
+# Рівень додатка керується змінною LOG_LEVEL у .env (DEBUG / INFO / WARNING), типово INFO.
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "default"},
+    },
+    "loggers": {
+        # Увесь код додатка: fuel.services, fuel.providers.*, fuel.card_service, ...
+        "fuel": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
+        # Помилки Django (500 тощо) мають потрапляти в журнал і при DEBUG=0
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}
