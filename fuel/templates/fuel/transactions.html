@@ -9,10 +9,34 @@
       {% for value, label in providers %}<option value="{{ value }}" {% if value == provider %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </label>
-  <label>Пошук <input type="search" name="q" value="{{ q }}" placeholder="авто / картка / АЗС"></label>
+  <label>Статус картки
+    <select name="status">
+      <option value="">Усі</option>
+      {% for value, label in statuses %}<option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
   <button>Показати</button>
-  <button type="submit" form="sync-form" id="sync-btn">Синхронізувати</button>
-  <a href="?{{ query }}&export=csv">Експорт CSV</a>
+
+  <div class="actions">
+    <details class="colmenu" id="col-menu">
+      <summary class="btn">Колонки ▾</summary>
+      <div class="colmenu-body">
+        {% for key, label in column_choices %}
+        <label class="chk"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
+        {% endfor %}
+        <button type="button" id="col-reset">Скинути</button>
+      </div>
+    </details>
+    <button type="submit" form="sync-form" id="sync-btn">Синхронізувати</button>
+    <a class="btn" href="?{{ query }}&export=csv">Експорт CSV</a>
+  </div>
+
+  <div class="break"></div>
+
+  <label>Картка <input type="search" name="card" value="{{ card }}" placeholder="номер"></label>
+  <label>Водій <input type="search" name="driver" value="{{ driver }}" placeholder="ПІБ"></label>
+  <label>Авто <input type="search" name="vehicle" value="{{ vehicle }}" placeholder="авто (наше або від пост.)"></label>
+  <label>Пошук <input type="search" name="q" value="{{ q }}" placeholder="усе разом + АЗС"></label>
 </form>
 
 <form method="post" action="{% url 'transactions_sync' %}" id="sync-form" hidden
@@ -21,35 +45,98 @@
   <input type="hidden" name="query" value="{{ query }}">
 </form>
 
+<script>
+/* Прихованими колонками керує браузер (localStorage); скрипт стоїть до таблиці, щоб не було «блимання». */
+(function () {
+  var KEY = "fuel.transactions.hiddenColumns";
+  var menu = document.getElementById("col-menu");
+  var boxes = Array.prototype.slice.call(menu.querySelectorAll("input[data-col]"));
+  var allowed = boxes.map(function (b) { return b.dataset.col; });
+  var style = document.createElement("style");
+  document.head.appendChild(style);
+
+  function load() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY) || "[]");
+      return Array.isArray(v) ? v.filter(function (c) { return allowed.indexOf(c) !== -1; }) : [];
+    } catch (e) { return []; }
+  }
+  function save(hidden) {
+    try {
+      if (hidden.length) { localStorage.setItem(KEY, JSON.stringify(hidden)); }
+      else { localStorage.removeItem(KEY); }
+    } catch (e) { /* сховище недоступне: працюємо без збереження */ }
+  }
+  function apply(hidden) {
+    style.textContent = hidden.map(function (c) { return ".c-" + c + "{display:none}"; }).join("");
+    boxes.forEach(function (b) { b.checked = hidden.indexOf(b.dataset.col) === -1; });
+  }
+
+  apply(load());
+
+  boxes.forEach(function (b) {
+    b.addEventListener("change", function () {
+      var hidden = boxes.filter(function (x) { return !x.checked; })
+                        .map(function (x) { return x.dataset.col; });
+      apply(hidden);
+      save(hidden);
+    });
+  });
+  document.getElementById("col-reset").addEventListener("click", function () {
+    apply([]);
+    save([]);
+  });
+  document.addEventListener("click", function (e) {
+    if (menu.open && !menu.contains(e.target)) { menu.open = false; }
+  });
+})();
+</script>
+
 <div class="totals">
   Заправок: {{ totals.n }} · Літрів: {{ totals.liters|default:0|floatformat:2 }} · Сума: {{ totals.amount|default:0|floatformat:2 }} грн
   <small>(Petroline не віддає суму, тож сума неповна)</small>
 </div>
 
+<div class="table-wrap">
 <table>
 <thead><tr>
-  <th>Дата</th><th>Пост.</th><th>Тип</th><th>Картка</th><th>Авто</th><th>Пальне</th>
-  <th class="n">Літри</th><th class="n">Ціна</th><th class="n">Сума</th><th>АЗС</th>
+  <th>Дата</th>
+  <th class="c-provider">Пост.</th>
+  <th class="c-kind">Тип</th>
+  <th class="c-card">Картка</th>
+  <th class="c-vraw">Авто (пост.)</th>
+  <th class="c-driver own">Водій</th>
+  <th class="c-vehicle own">Авто</th>
+  <th class="c-status own">Статус</th>
+  <th class="c-fuel">Пальне</th>
+  <th class="n c-liters">Літри</th>
+  <th class="n c-price">Ціна</th>
+  <th class="n c-amount">Сума</th>
+  <th class="c-station">АЗС</th>
 </tr></thead>
 <tbody>
 {% for t in page %}
 <tr class="{% if t.canceled %}canceled{% endif %} {% if t.kind == 'topup' %}topup{% endif %}">
   <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
-  <td>{{ t.get_provider_display }}</td>
-  <td>{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
-  <td>{{ t.card_ref }}</td>
-  <td>{{ t.vehicle_display }}</td>
-  <td>{{ t.fuel }}</td>
-  <td class="n">{{ t.liters|default_if_none:""|floatformat:2 }}</td>
-  <td class="n">{{ t.price|default_if_none:""|floatformat:2 }}</td>
-  <td class="n">{{ t.amount|default_if_none:""|floatformat:2 }}</td>
-  <td>{{ t.station }}</td>
+  <td class="c-provider">{{ t.get_provider_display }}</td>
+  <td class="c-kind">{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
+  <td class="c-card">{{ t.card_ref }}</td>
+  <td class="c-vraw">{{ t.vehicle_raw }}</td>
+  <td class="c-driver own">{% if t.card.driver_name %}{{ t.card.driver_name }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+  <td class="c-vehicle own">{% if t.card.vehicle %}{{ t.card.vehicle }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+  <td class="c-status own">{% if t.card and t.card.status is not None %}<span class="badge {% if t.card.status == st_active %}ok{% elif t.card.status == st_blocked %}bad{% endif %}">{{ t.card.get_status_display }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+  <td class="c-fuel">{{ t.fuel }}</td>
+  <td class="n c-liters">{{ t.liters|default_if_none:""|floatformat:2 }}</td>
+  <td class="n c-price">{{ t.price|default_if_none:""|floatformat:2 }}</td>
+  <td class="n c-amount">{{ t.amount|default_if_none:""|floatformat:2 }}</td>
+  <td class="c-station">{{ t.station }}</td>
 </tr>
 {% empty %}
-<tr><td colspan="10">Немає даних за обраний період</td></tr>
+<tr><td colspan="13">Немає даних за обраний період</td></tr>
 {% endfor %}
 </tbody>
 </table>
+</div>
 
 <div class="pager">
   {% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}">← Назад</a>{% endif %}

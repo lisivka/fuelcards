@@ -12,43 +12,85 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from .models import Provider, Transaction
+from .models import CardStatus, Provider, Transaction
 from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
-_FILTER_KEYS = {"from", "to", "provider", "q", "page"}
+_FILTER_KEYS = {"from", "to", "provider", "status", "card", "driver", "vehicle", "q", "page"}
+
+STATUS_UNKNOWN = "unknown"
+STATUS_CHOICES = [(str(value), label) for value, label in CardStatus.choices] + [(STATUS_UNKNOWN, "Невідомо")]
+
+# Колонки, які користувач може ховати (ключ, підпис). «Дата» ховати не можна.
+COLUMN_CHOICES = [
+    ("provider", "Пост."),
+    ("kind", "Тип"),
+    ("card", "Картка"),
+    ("vraw", "Авто (пост.)"),
+    ("driver", "Водій"),
+    ("vehicle", "Авто"),
+    ("status", "Статус"),
+    ("fuel", "Пальне"),
+    ("liters", "Літри"),
+    ("price", "Ціна"),
+    ("amount", "Сума"),
+    ("station", "АЗС"),
+]
 
 
 @login_required
 def transactions(request):
     today = timezone.localdate()
-    d_from = parse_date(request.GET.get("from", "")) or today
-    d_to = parse_date(request.GET.get("to", "")) or today
-    provider = request.GET.get("provider", "")
-    q = request.GET.get("q", "").strip()
+    g = request.GET
+    d_from = parse_date(g.get("from", "")) or today
+    d_to = parse_date(g.get("to", "")) or today
+    provider = g.get("provider", "")
+    status = g.get("status", "")
+    card = g.get("card", "").strip()
+    driver = g.get("driver", "").strip()
+    vehicle = g.get("vehicle", "").strip()
+    q = g.get("q", "").strip()
 
     qs = Transaction.objects.select_related("card").filter(
         timestamp__date__gte=d_from, timestamp__date__lte=d_to
     )
     if provider:
         qs = qs.filter(provider=provider)
+    if status == STATUS_UNKNOWN:
+        qs = qs.filter(Q(card__isnull=True) | Q(card__status__isnull=True))
+    elif status.isdigit() and int(status) in CardStatus.values:
+        qs = qs.filter(card__status=int(status))
+    if card:
+        qs = qs.filter(card_ref__icontains=card)
+    if driver:
+        qs = qs.filter(card__driver_name__icontains=driver)
+    if vehicle:
+        qs = qs.filter(Q(card__vehicle__icontains=vehicle) | Q(vehicle_raw__icontains=vehicle))
     if q:
         qs = qs.filter(
             Q(card_ref__icontains=q) | Q(vehicle_raw__icontains=q)
-            | Q(card__vehicle__icontains=q) | Q(station__icontains=q)
+            | Q(card__vehicle__icontains=q) | Q(card__driver_name__icontains=q)
+            | Q(station__icontains=q)
         )
 
-    if request.GET.get("export") == "csv":
+    if g.get("export") == "csv":
         return _export_csv(qs, d_from, d_to)
 
     totals = qs.filter(kind=Transaction.Kind.FUEL, canceled=False).aggregate(
         n=Count("id"), liters=Sum("liters"), amount=Sum("amount")
     )
-    page = Paginator(qs, 100).get_page(request.GET.get("page"))
-    query = urlencode({"from": d_from.isoformat(), "to": d_to.isoformat(), "provider": provider, "q": q})
+    page = Paginator(qs, 100).get_page(g.get("page"))
+    query = urlencode({
+        "from": d_from.isoformat(), "to": d_to.isoformat(), "provider": provider, "status": status,
+        "card": card, "driver": driver, "vehicle": vehicle, "q": q,
+    })
     return render(request, "fuel/transactions.html", {
         "page": page, "totals": totals, "d_from": d_from, "d_to": d_to,
-        "provider": provider, "q": q, "providers": Provider.choices, "query": query,
+        "provider": provider, "status": status, "card": card, "driver": driver,
+        "vehicle": vehicle, "q": q, "query": query,
+        "providers": Provider.choices, "statuses": STATUS_CHOICES,
+        "column_choices": COLUMN_CHOICES,
+        "st_active": CardStatus.ACTIVE.value, "st_blocked": CardStatus.BLOCKED.value,
     })
 
 
@@ -89,15 +131,23 @@ def transactions_sync(request):
 
 
 def _export_csv(qs, d_from, d_to):
+    """CSV завжди з повним набором колонок, незалежно від прихованих на екрані."""
     resp = HttpResponse(content_type="text/csv; charset=utf-8")
     resp["Content-Disposition"] = f'attachment; filename="fuel_{d_from}_{d_to}.csv"'
     resp.write("\ufeff")  # BOM для Excel
     w = csv.writer(resp, delimiter=";")
-    w.writerow(["Дата", "Постачальник", "Тип", "Картка", "Авто", "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано"])
+    w.writerow([
+        "Дата", "Постачальник", "Тип", "Картка", "Авто (пост.)", "Водій", "Авто", "Статус",
+        "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
+    ])
     for t in qs.order_by("timestamp"):
+        card = t.card
+        status = card.get_status_display() if card and card.status is not None else ""
         w.writerow([
             timezone.localtime(t.timestamp).strftime("%d.%m.%Y %H:%M:%S"), t.get_provider_display(),
-            t.get_kind_display(), t.card_ref, t.vehicle_display, t.fuel,
+            t.get_kind_display(), t.card_ref, t.vehicle_raw,
+            card.driver_name if card else "", card.vehicle if card else "", status,
+            t.fuel,
             t.liters if t.liters is not None else "", t.price if t.price is not None else "",
             t.amount if t.amount is not None else "", t.station, "так" if t.canceled else "",
         ])

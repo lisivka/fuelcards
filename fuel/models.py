@@ -8,9 +8,10 @@ class Provider(models.TextChoices):
 
 
 class CardStatus(models.IntegerChoices):
-    BLOCKED = 0, "Заблокована"
-    ACTIVE = 1, "Активна"
-
+    ACTIVE = 0, "Активна"
+    BLOCKED = 1, "Заблокована"
+    INACTIVE = 2, "Неактивна"
+    REPLACED = 3, "Замінена"
 
 class Card(models.Model):
     provider = models.CharField("Постачальник", max_length=20, choices=Provider.choices)

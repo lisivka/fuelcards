@@ -6,7 +6,8 @@ BASE = "https://naftacards.ukrnafta.com/public-api"
 
 
 class UkrnaftaError(RuntimeError):
-    print(f"{__file__}: UkrnaftaError: {RuntimeError}")
+    """Помилка роботи з API UkrNafta."""
+    # print(f"{__file__}: UkrnaftaError: {RuntimeError}")
     pass
 
 

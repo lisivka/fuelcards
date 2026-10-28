@@ -14,13 +14,29 @@ header form{margin:0}
 main{padding:20px}
 .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:15px}
 .filters label{display:flex;flex-direction:column;font-size:12px;color:#555}
+.filters .break{flex-basis:100%;height:0}
+.filters .actions{display:flex;gap:8px;align-items:end;margin-left:auto}
 input,select,button{padding:6px 8px;font-size:14px}
+.filters button,.btn{box-sizing:border-box;padding:6px 10px;font-size:14px;line-height:1.2;border:1px solid #8f8f9d;border-radius:4px;background:#efefef;color:#222;cursor:pointer;text-decoration:none;display:inline-block}
+.filters button:hover,.btn:hover{background:#e3e3e8}
+.colmenu{position:relative}
+.colmenu summary{display:block;list-style:none}
+.colmenu summary::-webkit-details-marker{display:none}
+.colmenu-body{position:absolute;right:0;top:100%;margin-top:4px;z-index:10;background:#fff;border:1px solid #ccc;border-radius:4px;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.15);min-width:170px;display:flex;flex-direction:column;gap:4px}
+.colmenu-body label.chk{flex-direction:row;align-items:center;gap:6px;font-size:14px;color:#222}
+.table-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;background:#fff;font-size:14px}
 th,td{border-bottom:1px solid #e3e5e8;padding:6px 8px;text-align:left}
-th{background:#eef0f3}
+th{background:#eef0f3;white-space:nowrap}
+th.own{background:#e4efd9}
+td.own{background:#f6faf0}
 td.n,th.n{text-align:right}
 .canceled{color:#999;text-decoration:line-through}
 .topup{background:#f0f8ff}
+.dim{color:#999}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:#e3e5e8;color:#555}
+.badge.ok{background:#d6f0dc;color:#1b6b2f}
+.badge.bad{background:#f9d6d3;color:#a12a22}
 .totals{margin:10px 0;font-weight:600}
 .pager{margin-top:12px}
 .messages{list-style:none;margin:0 0 15px;padding:0}
@@ -29,7 +45,6 @@ td.n,th.n{text-align:right}
 .messages li.info{background:#e8f0fe;border-color:#a7bff0}
 .messages li.warning{background:#fff4e0;border-color:#f0c070}
 .messages li.error{background:#fdecea;border-color:#e8a09a}
-.sync-form{display:inline-block;margin:0 0 10px}
 </style>
 {% block extra_head %}{% endblock %}
 </head>
