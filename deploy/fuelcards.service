@@ -1,0 +1,23 @@
+[Unit]
+Description=Fuelcards (Django + waitress)
+After=network.target
+
+[Service]
+Type=simple
+User=fuelcards
+Group=fuelcards
+WorkingDirectory=/opt/fuelcards
+Environment=PYTHONPATH=/opt/fuelcards
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/fuelcards/venv/bin/waitress-serve --listen=0.0.0.0:8000 --threads=8 config.wsgi:application
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/fuelcards
+
+[Install]
+WantedBy=multi-user.target
