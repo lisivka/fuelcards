@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 
 import requests
 
-from .base import BaseProvider, NormalizedTx, aware, to_dec
+from .base import BaseProvider, NormalizedTx, aware, to_dec, parse_iso
 
 TYPE_FUEL = 302
 TYPE_TOPUP = 214
@@ -42,7 +42,7 @@ class UkrnaftaProvider(BaseProvider):
             type_id = row.get("typeId")
             if type_id not in (TYPE_FUEL, TYPE_TOPUP):
                 continue
-            ts = aware(datetime.fromisoformat(row["terminalDate"]))
+            ts = aware(parse_iso(row["terminalDate"]))
             amount = to_dec(row.get("amount"))
             if type_id == TYPE_TOPUP:
                 items.append(NormalizedTx(
