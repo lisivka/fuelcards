@@ -18,16 +18,16 @@
   <button>Показати</button>
 
   <div class="actions">
-    <details class="colmenu" id="col-menu">
-      <summary class="btn">Колонки ▾</summary>
-      <div class="colmenu-body">
+      <button type="submit" form="sync-form" id="sync-btn" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; cursor: pointer;">Синхронізувати</button>
+      <details class="colmenu" id="col-menu">
+        <summary class="btn">Колонки ▾</summary>
+        <div class="colmenu-body">
         {% for key, label in column_choices %}
-        <label class="chk"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
+            <label class="chk"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
         {% endfor %}
-        <button type="button" id="col-reset">Скинути</button>
+          <button type="button" id="col-reset">Скинути</button>
       </div>
     </details>
-    <button type="submit" form="sync-form" id="sync-btn">Синхронізувати</button>
     <a class="btn" href="?{{ query }}&export=csv">Експорт CSV</a>
   </div>
 
