@@ -26,6 +26,7 @@ COLUMN_CHOICES = [
     ("provider", "Пост."),
     ("kind", "Тип"),
     ("card", "Картка"),
+    ("cardid", "Ідентифікатор"),
     ("vraw", "Авто (пост.)"),
     ("driver", "Водій"),
     ("vehicle", "Авто"),
@@ -61,14 +62,14 @@ def transactions(request):
     elif status.isdigit() and int(status) in CardStatus.values:
         qs = qs.filter(card__status=int(status))
     if card:
-        qs = qs.filter(card_ref__icontains=card)
+        qs = qs.filter(Q(card_ref__icontains=card) | Q(card__ext_number__icontains=card))
     if driver:
         qs = qs.filter(card__driver_name__icontains=driver)
     if vehicle:
         qs = qs.filter(Q(card__vehicle__icontains=vehicle) | Q(vehicle_raw__icontains=vehicle))
     if q:
         qs = qs.filter(
-            Q(card_ref__icontains=q) | Q(vehicle_raw__icontains=q)
+            Q(card_ref__icontains=q) | Q(card__ext_number__icontains=q) | Q(vehicle_raw__icontains=q)
             | Q(card__vehicle__icontains=q) | Q(card__driver_name__icontains=q)
             | Q(station__icontains=q)
         )
@@ -137,15 +138,15 @@ def _export_csv(qs, d_from, d_to):
     resp.write("\ufeff")  # BOM для Excel
     w = csv.writer(resp, delimiter=";")
     w.writerow([
-        "Дата", "Постачальник", "Тип", "Картка", "Авто (пост.)", "Водій", "Авто", "Статус",
-        "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
+        "Дата", "Постачальник", "Тип", "Картка", "Ідентифікатор", "Авто (пост.)", "Водій", "Авто",
+        "Статус", "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
     ])
     for t in qs.order_by("timestamp"):
         card = t.card
         status = card.get_status_display() if card and card.status is not None else ""
         w.writerow([
             timezone.localtime(t.timestamp).strftime("%d.%m.%Y %H:%M:%S"), t.get_provider_display(),
-            t.get_kind_display(), t.card_ref, t.vehicle_raw,
+            t.get_kind_display(), card.display_number if card else t.card_ref, t.card_ref, t.vehicle_raw,
             card.driver_name if card else "", card.vehicle if card else "", status,
             t.fuel,
             t.liters if t.liters is not None else "", t.price if t.price is not None else "",

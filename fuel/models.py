@@ -8,14 +8,20 @@ class Provider(models.TextChoices):
 
 
 class CardStatus(models.IntegerChoices):
+    # Значення збігаються з полем status в API UkrNafta і пишуться в базу без перетворень.
+    # Статуси Petroline (3 і 5) перекладаються на ці значення в fuel/providers/petroline_cards.py
     ACTIVE = 0, "Активна"
     BLOCKED = 1, "Заблокована"
     INACTIVE = 2, "Неактивна"
     REPLACED = 3, "Замінена"
 
+
 class Card(models.Model):
     provider = models.CharField("Постачальник", max_length=20, choices=Provider.choices)
+    # Ключ зв'язку з транзакціями. Для Petroline це «Ідентифікатор», а не номер на картці
     number = models.CharField("Номер картки", max_length=64)
+    ext_number = models.CharField("Номер на картці", max_length=64, blank=True)
+    external_id = models.CharField("ID у провайдера", max_length=32, blank=True)
     vehicle = models.CharField("Авто / водій", max_length=120, blank=True)
     driver_name = models.CharField("ПІБ водія", max_length=120, blank=True)
     status = models.PositiveSmallIntegerField(
@@ -37,7 +43,12 @@ class Card(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.get_provider_display()} {self.number} {self.vehicle} {self.driver_name}".strip()
+        return f"{self.get_provider_display()} {self.display_number} {self.vehicle} {self.driver_name}".strip()
+
+    @property
+    def display_number(self):
+        """Номер, який надрукований на картці (якщо відомий), інакше ключовий номер."""
+        return self.ext_number or self.number
 
 
 class ProviderConfig(models.Model):
@@ -50,6 +61,9 @@ class ProviderConfig(models.Model):
         verbose_name_plural = "Конфігурації провайдерів"
         ordering = ["code"]
 
+    def __str__(self):
+        return self.code
+
     @classmethod
     def ensure_all(cls):
         configs = {}
@@ -60,9 +74,6 @@ class ProviderConfig(models.Model):
             )
             configs[code] = config
         return configs
-
-    def __str__(self):
-        return self.code
 
 
 class Transaction(models.Model):
@@ -95,11 +106,11 @@ class Transaction(models.Model):
             models.UniqueConstraint(fields=["provider", "external_id"], name="uniq_provider_tx")
         ]
 
+    def __str__(self):
+        return f"{self.provider}:{self.external_id}"
+
     @property
     def vehicle_display(self):
         if self.card and self.card.vehicle:
             return self.card.vehicle
         return self.vehicle_raw
-
-    def __str__(self):
-        return f"{self.provider}:{self.external_id}"

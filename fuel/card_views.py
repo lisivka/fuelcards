@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST
 
 from . import card_service as svc
 from .models import Card, Provider
+from .providers.petroline_cards import PetrolineError
 from .providers.ukrnafta_cards import UkrnaftaError
 
 
@@ -24,18 +25,22 @@ def _safe(fn):
         return JsonResponse(fn())
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
-    except (UkrnaftaError, requests.RequestException) as exc:
+    except (UkrnaftaError, PetrolineError, requests.RequestException) as exc:
         return JsonResponse({"error": f"Помилка провайдера: {exc}"}, status=502)
 
 
 @login_required
 def cards(request):
     editable = svc.editable_map()
+    syncable = svc.sync_map()
     rows = [svc.serialize(c, editable) for c in Card.objects.all()]
     return render(request, "fuel/cards.html", {
         "rows": rows,
         "providers": Provider.choices,
-        "sync_available": editable.get(Provider.UKRNAFTA.value, False),
+        "sync_buttons": [
+            {"provider": code, "label": label}
+            for code, label in svc.SYNC_LABELS.items() if syncable.get(code)
+        ],
     })
 
 
@@ -86,7 +91,7 @@ def card_status(request, pk):
         try:
             new_status = int(data.get("status"))
         except (TypeError, ValueError):
-            raise ValueError("Некоректний статус")
+            raise ValueError("Некоректний статус") from None
         svc.set_status(card, new_status)
         return {"card": _json_card(card)}
 
@@ -103,10 +108,11 @@ def card_delete(request, pk):
 @login_required
 @require_POST
 def cards_sync(request):
+    """Оновлення карток із API провайдера; без параметра це UkrNafta (як раніше)."""
+    provider = _body(request).get("provider") or Provider.UKRNAFTA.value
+
     def run():
-        if not svc.editable_map().get(Provider.UKRNAFTA.value):
-            raise ValueError("UkrNafta неактивний або режим редагування вимкнений")
-        created, updated = svc.sync_ukrnafta_cards()
+        created, updated = svc.sync_cards(provider)
         return {"created": created, "updated": updated}
 
     return _safe(run)

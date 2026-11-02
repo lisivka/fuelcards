@@ -74,7 +74,7 @@
         white-space: nowrap;
     }
 
-    #sync-btn:disabled {
+    .sync-btn:disabled {
         cursor: wait;
         opacity: 0.6;
     }
@@ -123,11 +123,16 @@
 
         <span id="count" class="muted"></span>
 
-        {% if sync_available %}
-            <button type="button" id="sync-btn">
-                Оновити статуси UkrNafta
+        {% for b in sync_buttons %}
+            <button
+                type="button"
+                class="sync-btn"
+                data-provider="{{ b.provider }}"
+                data-label="{{ b.label }}"
+            >
+                {{ b.label }}
             </button>
-        {% endif %}
+        {% endfor %}
     </div>
 
     <table id="tbl">
@@ -147,12 +152,13 @@
                 <tr
                     data-id="{{ r.id }}"
                     data-provider="{{ r.provider }}"
-                    data-number="{{ r.number }}"
+                    data-number="{{ r.display_number }}"
+                    data-search="{{ r.number }} {{ r.ext_number }}"
                     data-status="{{ r.status|default_if_none:'' }}"
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
                 >
                     <td>{{ r.provider_label }}</td>
-                    <td>{{ r.number }}</td>
+                    <td{% if r.ext_number %} title="Ідентифікатор: {{ r.number }}"{% endif %}>{{ r.display_number }}</td>
 
                     <td>
                         <input
@@ -193,10 +199,7 @@
             {% empty %}
                 <tr>
                     <td colspan="6">
-                        Карток поки немає
-                        {% if sync_available %}
-                            . Натисніть «Оновити статуси UkrNafta»
-                        {% endif %}.
+                        Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
             {% endfor %}
@@ -288,7 +291,7 @@
             var matches =
                 (!provider || tr.dataset.provider === provider) &&
                 (!number ||
-                    tr.dataset.number.toLowerCase().includes(number)) &&
+                    tr.dataset.search.toLowerCase().includes(number)) &&
                 (!vehicle ||
                     tr.querySelector(".v").value.toLowerCase()
                         .includes(vehicle)) &&
@@ -486,21 +489,28 @@
         });
     }
 
-    // Синхронізація карток зі UkrNafta.
+    // Оновлення карток із API провайдерів (кнопки генеруються з бекенду).
 
-    var syncButton = document.getElementById("sync-btn");
+    var syncButtons = Array.prototype.slice.call(
+        document.querySelectorAll(".sync-btn")
+    );
 
-    if (syncButton) {
-        syncButton.addEventListener("click", function () {
-            console.log("Натиснуто кнопку синхронізації UkrNafta");
+    syncButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+            var label = button.dataset.label;
 
-            syncButton.disabled = true;
-            syncButton.textContent = "Оновлення…";
+            syncButtons.forEach(function (b) {
+                b.disabled = true;
+            });
 
-            post("/cards/sync/").then(function (result) {
+            button.textContent = "Оновлення…";
+
+            post("/cards/sync/", {
+                provider: button.dataset.provider
+            }).then(function (result) {
                 flash(
-                    "Оновлено. Нових: " + result.created +
-                    ", оновлено: " + result.updated,
+                    label + ": нових " + result.created +
+                    ", оновлено " + result.updated,
                     true
                 );
 
@@ -508,13 +518,16 @@
                     location.reload();
                 }, 800);
             }).catch(function (error) {
-                flash("Помилка синхронізації: " + error.message, false);
+                flash("Помилка оновлення: " + error.message, false);
 
-                syncButton.disabled = false;
-                syncButton.textContent = "Оновити статуси UkrNafta";
+                syncButtons.forEach(function (b) {
+                    b.disabled = false;
+                });
+
+                button.textContent = label;
             });
         });
-    }
+    });
 
     applyFilters();
 })();

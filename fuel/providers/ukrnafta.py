@@ -1,9 +1,9 @@
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import requests
 
-from .base import BaseProvider, NormalizedTx, aware, to_dec, parse_iso
+from .base import BaseProvider, NormalizedTx, aware, parse_iso, to_dec
 
 TYPE_FUEL = 302
 TYPE_TOPUP = 214

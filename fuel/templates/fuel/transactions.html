@@ -18,14 +18,14 @@
   <button>Показати</button>
 
   <div class="actions">
-      <button type="submit" form="sync-form" id="sync-btn" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; cursor: pointer;">Синхронізувати</button>
-      <details class="colmenu" id="col-menu">
-        <summary class="btn">Колонки ▾</summary>
-        <div class="colmenu-body">
+    <button type="submit" form="sync-form" id="sync-btn" class="btn-green">Синхронізувати</button>
+    <details class="colmenu" id="col-menu">
+      <summary class="btn">Колонки ▾</summary>
+      <div class="colmenu-body">
         {% for key, label in column_choices %}
-            <label class="chk"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
+        <label class="chk"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
         {% endfor %}
-          <button type="button" id="col-reset">Скинути</button>
+        <button type="button" id="col-reset">Скинути</button>
       </div>
     </details>
     <a class="btn" href="?{{ query }}&export=csv">Експорт CSV</a>
@@ -33,7 +33,7 @@
 
   <div class="break"></div>
 
-  <label>Картка <input type="search" name="card" value="{{ card }}" placeholder="номер"></label>
+  <label>Картка <input type="search" name="card" value="{{ card }}" placeholder="номер або ідентифікатор"></label>
   <label>Водій <input type="search" name="driver" value="{{ driver }}" placeholder="ПІБ"></label>
   <label>Авто <input type="search" name="vehicle" value="{{ vehicle }}" placeholder="авто (наше або від пост.)"></label>
   <label>Пошук <input type="search" name="q" value="{{ q }}" placeholder="усе разом + АЗС"></label>
@@ -46,9 +46,11 @@
 </form>
 
 <script>
-/* Прихованими колонками керує браузер (localStorage); скрипт стоїть до таблиці, щоб не було «блимання». */
+/* Прихованими колонками керує браузер (localStorage); скрипт стоїть до таблиці, щоб не було «блимання».
+   За замовчуванням ховається технічна колонка «Ідентифікатор». */
 (function () {
   var KEY = "fuel.transactions.hiddenColumns";
+  var DEFAULT_HIDDEN = ["cardid"];
   var menu = document.getElementById("col-menu");
   var boxes = Array.prototype.slice.call(menu.querySelectorAll("input[data-col]"));
   var allowed = boxes.map(function (b) { return b.dataset.col; });
@@ -57,15 +59,17 @@
 
   function load() {
     try {
-      var v = JSON.parse(localStorage.getItem(KEY) || "[]");
-      return Array.isArray(v) ? v.filter(function (c) { return allowed.indexOf(c) !== -1; }) : [];
-    } catch (e) { return []; }
+      var raw = localStorage.getItem(KEY);
+      if (raw === null) { return DEFAULT_HIDDEN.slice(); }
+      var v = JSON.parse(raw);
+      return Array.isArray(v)
+        ? v.filter(function (c) { return allowed.indexOf(c) !== -1; })
+        : DEFAULT_HIDDEN.slice();
+    } catch (e) { return DEFAULT_HIDDEN.slice(); }
   }
   function save(hidden) {
-    try {
-      if (hidden.length) { localStorage.setItem(KEY, JSON.stringify(hidden)); }
-      else { localStorage.removeItem(KEY); }
-    } catch (e) { /* сховище недоступне: працюємо без збереження */ }
+    try { localStorage.setItem(KEY, JSON.stringify(hidden)); }
+    catch (e) { /* сховище недоступне: працюємо без збереження */ }
   }
   function apply(hidden) {
     style.textContent = hidden.map(function (c) { return ".c-" + c + "{display:none}"; }).join("");
@@ -83,8 +87,8 @@
     });
   });
   document.getElementById("col-reset").addEventListener("click", function () {
-    apply([]);
-    save([]);
+    try { localStorage.removeItem(KEY); } catch (e) { /* ігноруємо */ }
+    apply(DEFAULT_HIDDEN.slice());
   });
   document.addEventListener("click", function (e) {
     if (menu.open && !menu.contains(e.target)) { menu.open = false; }
@@ -104,6 +108,7 @@
   <th class="c-provider">Пост.</th>
   <th class="c-kind">Тип</th>
   <th class="c-card">Картка</th>
+  <th class="c-cardid">Ідентифікатор</th>
   <th class="c-vraw">Авто (пост.)</th>
   <th class="c-driver own">Водій</th>
   <th class="c-vehicle own">Авто</th>
@@ -120,7 +125,8 @@
   <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
   <td class="c-provider">{{ t.get_provider_display }}</td>
   <td class="c-kind">{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
-  <td class="c-card">{{ t.card_ref }}</td>
+  <td class="c-card">{% if t.card %}{{ t.card.display_number }}{% else %}{{ t.card_ref }}{% endif %}</td>
+  <td class="c-cardid">{{ t.card_ref }}</td>
   <td class="c-vraw">{{ t.vehicle_raw }}</td>
   <td class="c-driver own">{% if t.card.driver_name %}{{ t.card.driver_name }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
   <td class="c-vehicle own">{% if t.card.vehicle %}{{ t.card.vehicle }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
@@ -132,7 +138,7 @@
   <td class="c-station">{{ t.station }}</td>
 </tr>
 {% empty %}
-<tr><td colspan="13">Немає даних за обраний період</td></tr>
+<tr><td colspan="14">Немає даних за обраний період</td></tr>
 {% endfor %}
 </tbody>
 </table>
