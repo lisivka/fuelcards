@@ -3,3 +3,6 @@ requests>=2.31
 python-dotenv>=1.0
 waitress>=3.0,<4
 whitenoise>=6.6,<7
+pytest>=8.0
+pytest-django>=4.8
+ruff>=0.6
