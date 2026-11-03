@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
@@ -196,3 +197,76 @@ class Transaction(models.Model):
         if self.card and self.card.vehicle:
             return self.card.vehicle
         return self.vehicle_raw
+
+class AuditLog(models.Model):
+    """Журнал змін: хто, коли, що змінив і чи вдалося (зокрема записи в API провайдерів)."""
+
+    class Action(models.TextChoices):
+        CARD_CREATE = "card_create", "Створення картки"
+        CARD_INFO = "card_info", "Зміна даних картки"
+        CARD_STATUS = "card_status", "Зміна статусу картки"
+        CARD_DELETE = "card_delete", "Видалення картки"
+
+    # Підписи полів для читабельного опису змін
+    FIELD_LABELS = {
+        "number": "Номер",
+        "vehicle": "Авто",
+        "driver_name": "ПІБ водія",
+        "note": "Примітка",
+        "status": "Статус",
+    }
+
+    created_at = models.DateTimeField("Коли", auto_now_add=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="Користувач",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    # Знімок імені: запис лишається зрозумілим, навіть якщо користувача видалять
+    username = models.CharField("Логін", max_length=150, blank=True)
+    action = models.CharField("Дія", max_length=20, choices=Action.choices)
+    card = models.ForeignKey(
+        Card,
+        verbose_name="Картка",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="audit_entries",
+    )
+    card_label = models.CharField("Картка (знімок)", max_length=200, blank=True)
+    provider = models.CharField("Постачальник", max_length=20, blank=True)
+    changes = models.JSONField("Зміни", default=dict, blank=True)  # {"поле": [було, стало]}
+    via_api = models.BooleanField("Через API провайдера", default=False)
+    success = models.BooleanField("Успішно", default=True)
+    error = models.TextField("Помилка", blank=True)
+
+    class Meta:
+        verbose_name = "Запис аудиту"
+        verbose_name_plural = "Журнал аудиту"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.get_action_display()} {self.card_label}"
+
+    def changes_display(self) -> list[str]:
+        """Зміни у вигляді «Авто: «старе» → «нове»»."""
+        lines = []
+        for field, values in (self.changes or {}).items():
+            old, new = (values + [None, None])[:2] if isinstance(values, list) else (None, values)
+            label = self.FIELD_LABELS.get(field, field)
+            if field == "status":
+                old, new = _status_label(old), _status_label(new)
+            lines.append(f"{label}: «{old or ''}» → «{new or ''}»")
+        return lines
+
+
+def _status_label(value) -> str:
+    if value is None or value == "":
+        return "—"
+    try:
+        return CardStatus(int(value)).label
+    except ValueError:
+        return str(value)

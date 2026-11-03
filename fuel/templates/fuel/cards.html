@@ -192,7 +192,7 @@
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
                 >
                     <td>{{ r.provider_label }}</td>
-                    <td>{{ r.display_number }}</td>
+                    <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
                     <td>{% if r.ext_number %}{{ r.number }}{% else %}<span class="muted">—</span>{% endif %}</td>
 
                     <td>

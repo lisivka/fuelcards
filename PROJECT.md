@@ -22,7 +22,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 - `fuel/models.py`: `Provider` (TextChoices), `CardStatus`, `ProviderConfig`, `Card`, `Transaction`.
 - `fuel/providers/`: адаптери `petroline.py`, `upg.py`, `ukrnafta.py` (транзакції) та `ukrnafta_cards.py`, `petroline_cards.py` (картки), спільне в `base.py` (`NormalizedTx`).
 - `fuel/services.py`: upsert транзакцій, `run_sync` (збій одного провайдера не зупиняє інших, неактивні пропускаються).
-- `fuel/card_service.py`, `fuel/card_views.py`: логіка й JSON-ендпоінти сторінки «Карти».
+- `fuel/card_service.py`, `fuel/card_views.py`: логіка й JSON-ендпоінти сторінки «Карти»; сторінка картки `card_detail` (`/cards/<id>/`, поля й блокування залежно від провайдера — `card_service.capabilities`), журнал аудиту.
 - `fuel/management/commands/`: `sync_fuel`, `sync_cards`.
 - Шаблони: `base.html` (меню: Транзакції, Карти, Адмінка), `transactions.html`, `cards.html`.
 
@@ -31,6 +31,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 - **Transaction**: provider, external_id (унікальна пара), kind (fuel/topup), card (FK, може бути null), card_ref, vehicle_raw, timestamp, fuel, liters, price, amount, station, canceled, raw JSON, cards.id_vehicle (FK, може бути null), cards.id_driver (FK, може бути null).
 - **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note.
 - **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta), row_color, sync_days (глибина синхронізації, 1..366, типово 2), sync_date_from / sync_date_to (період для синхронізації «з/по»; обидві або жодна, «по» не в майбутньому).
+- **AuditLog**: created_at, user (+ знімок username), action (card_create / card_info / card_status / card_delete), card (FK, null після видалення) + card_label (знімок), provider, changes JSON `{поле: [було, стало]}`, via_api, success, error. Пишеться в `card_service` (`record_audit`); невдалий запис в API теж логується з success=False, база при цьому не змінюється.
 - Синхронізація ідемпотентна: повторне завантаження оновлює записи (важливо для скасувань UkrNafta).
 
 ## 6. Провайдери (ключі лише в `.env`)
