@@ -1,4 +1,5 @@
 import csv
+from datetime import date, timedelta
 from urllib.parse import parse_qsl, urlencode
 
 from django.contrib import messages
@@ -16,7 +17,9 @@ from .models import CardStatus, Provider, ProviderConfig, Transaction
 from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
-_FILTER_KEYS = {"from", "to", "provider", "status", "card", "driver", "vehicle", "q", "page"}
+_FILTER_KEYS = {
+    "from", "to", "period", "provider", "status", "card", "driver", "vehicle", "q", "page", "per_page"
+}
 
 STATUS_UNKNOWN = "unknown"
 STATUS_CHOICES = [(str(value), label) for value, label in CardStatus.choices] + [(STATUS_UNKNOWN, "Невідомо")]
@@ -38,13 +41,53 @@ COLUMN_CHOICES = [
     ("station", "АЗС"),
 ]
 
+# Швидкі періоди: (код у адресі, підпис). Період відносний — збережений звіт «7 днів» завтра покаже нові 7 днів.
+PERIOD_PRESETS = [
+    ("today", "Сьогодні"),
+    ("yesterday", "Вчора"),
+    ("7d", "7 днів"),
+    ("30d", "30 днів"),
+]
+PER_PAGE_CHOICES = [25, 50, 100, 200, 500]
+DEFAULT_PER_PAGE = 100
+
+
+def preset_dates(code: str, today: date) -> tuple[date, date] | None:
+    """Дати швидкого періоду (обидві межі включно) або None для невідомого коду."""
+    if code == "today":
+        return today, today
+    if code == "yesterday":
+        yesterday = today - timedelta(days=1)
+        return yesterday, yesterday
+    if code == "7d":
+        return today - timedelta(days=6), today
+    if code == "30d":
+        return today - timedelta(days=29), today
+    return None
+
+
+def parse_per_page(value: str | None) -> int:
+    """Кількість рядків на сторінці; лише значення зі списку, інакше типове."""
+    try:
+        number = int(value or "")
+    except ValueError:
+        return DEFAULT_PER_PAGE
+    return number if number in PER_PAGE_CHOICES else DEFAULT_PER_PAGE
+
 
 @login_required
 def transactions(request):
     today = timezone.localdate()
     g = request.GET
-    d_from = parse_date(g.get("from", "")) or today
-    d_to = parse_date(g.get("to", "")) or today
+    period = g.get("period", "")
+    dates = preset_dates(period, today)
+    if dates:
+        d_from, d_to = dates
+    else:
+        period = ""
+        d_from = parse_date(g.get("from", "")) or today
+        d_to = parse_date(g.get("to", "")) or today
+    per_page = parse_per_page(g.get("per_page"))
     provider = g.get("provider", "")
     status = g.get("status", "")
     card = g.get("card", "").strip()
@@ -80,13 +123,20 @@ def transactions(request):
     totals = qs.filter(kind=Transaction.Kind.FUEL, canceled=False).aggregate(
         n=Count("id"), liters=Sum("liters"), amount=Sum("amount")
     )
-    page = Paginator(qs, 100).get_page(g.get("page"))
-    query = urlencode({
-        "from": d_from.isoformat(), "to": d_to.isoformat(), "provider": provider, "status": status,
-        "card": card, "driver": driver, "vehicle": vehicle, "q": q,
-    })
+    paginator = Paginator(qs, per_page)
+    page = paginator.get_page(g.get("page"))
+    page_range = list(paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=3))
+    period_params = {"period": period} if period else {"from": d_from.isoformat(), "to": d_to.isoformat()}
+    filter_params = {
+        "provider": provider, "status": status, "card": card, "driver": driver, "vehicle": vehicle, "q": q,
+    }
+    query = urlencode(
+        {**period_params, **{k: v for k, v in filter_params.items() if v}, "per_page": per_page}
+    )
     return render(request, "fuel/transactions.html", {
-        "page": page, "totals": totals, "d_from": d_from, "d_to": d_to,
+        "page": page, "page_range": page_range, "ellipsis": paginator.ELLIPSIS,
+        "totals": totals, "d_from": d_from, "d_to": d_to, "period": period,
+        "period_presets": PERIOD_PRESETS, "per_page": per_page, "per_page_choices": PER_PAGE_CHOICES,
         "provider": provider, "status": status, "card": card, "driver": driver,
         "vehicle": vehicle, "q": q, "query": query,
         "providers": Provider.choices, "statuses": STATUS_CHOICES,

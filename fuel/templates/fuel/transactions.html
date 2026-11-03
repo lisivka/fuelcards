@@ -1,9 +1,36 @@
 {% extends "fuel/base.html" %}
+{% block extra_head %}
+<script>
+/* Збережений звіт (період, фільтри, сторінка, к-сть рядків) живе в localStorage браузера.
+   Відкрили «Транзакції» без параметрів (меню, повернення з «Карт») — відновлюємо останній звіт
+   ще до показу сторінки. Інакше запам'ятовуємо поточний. */
+(function () {
+  var KEY = "fuel.transactions.report";
+  var search = window.location.search.replace(/^\?/, "");
+  try {
+    if (search === "") {
+      var saved = localStorage.getItem(KEY);
+      if (saved) { window.location.replace("?" + saved); }
+      return;
+    }
+    var params = new URLSearchParams(search);
+    params.delete("export");
+    localStorage.setItem(KEY, params.toString());
+  } catch (e) { /* сховище недоступне: працюємо без збереження */ }
+})();
+</script>
+{% endblock %}
 {% block content %}
 {% include "fuel/_provider_colors.html" %}
-<form method="get" class="filters">
-  <label>З <input type="date" name="from" value="{{ d_from|date:'Y-m-d' }}"></label>
-  <label>По <input type="date" name="to" value="{{ d_to|date:'Y-m-d' }}"></label>
+<form method="get" class="filters" id="filters-form">
+  <input type="hidden" name="period" id="period-input" value="{{ period }}">
+  <label>З <input type="date" name="from" value="{{ d_from|date:'Y-m-d' }}" data-period-clear></label>
+  <label>По <input type="date" name="to" value="{{ d_to|date:'Y-m-d' }}" data-period-clear></label>
+  <div class="presets">
+    {% for code, label in period_presets %}
+    <button type="button" data-period="{{ code }}"{% if code == period %} class="active"{% endif %}>{{ label }}</button>
+    {% endfor %}
+  </div>
   <label>Постачальник
     <select name="provider">
       <option value="">Усі</option>
@@ -30,6 +57,13 @@
       </div>
     </details>
     <a class="btn" href="?{{ query }}&export=csv">Експорт CSV</a>
+    <label class="inline">Рядків
+      <select name="per_page" id="per-page">
+        {% for n in per_page_choices %}<option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    <a class="btn" href="{% url 'transactions' %}?period=today" id="filters-reset"
+       title="Очистити збережений звіт: сьогодні, усі постачальники, 100 рядків">Скинути фільтри</a>
   </div>
 
   <div class="break"></div>
@@ -45,6 +79,28 @@
   {% csrf_token %}
   <input type="hidden" name="query" value="{{ query }}">
 </form>
+
+<script>
+/* Швидкі періоди та к-сть рядків: решта фільтрів форми лишається, звіт оновлюється з 1-ї сторінки
+   (номер сторінки у форму не входить). Ручна зміна дат скасовує відносний період. */
+(function () {
+  var form = document.getElementById("filters-form");
+  var periodInput = document.getElementById("period-input");
+  Array.prototype.forEach.call(form.querySelectorAll("[data-period]"), function (btn) {
+    btn.addEventListener("click", function () {
+      periodInput.value = btn.dataset.period;
+      form.submit();
+    });
+  });
+  Array.prototype.forEach.call(form.querySelectorAll("[data-period-clear]"), function (input) {
+    input.addEventListener("change", function () { periodInput.value = ""; });
+  });
+  document.getElementById("per-page").addEventListener("change", function () { form.submit(); });
+  document.getElementById("filters-reset").addEventListener("click", function () {
+    try { localStorage.removeItem("fuel.transactions.report"); } catch (e) { /* ігноруємо */ }
+  });
+})();
+</script>
 
 <script>
 /* Прихованими колонками керує браузер (localStorage); скрипт стоїть до таблиці, щоб не було «блимання».
@@ -145,9 +201,16 @@
 </table>
 </div>
 
-<div class="pager">
-  {% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}">← Назад</a>{% endif %}
-  Сторінка {{ page.number }} з {{ page.paginator.num_pages }}
-  {% if page.has_next %}<a href="?{{ query }}&page={{ page.next_page_number }}">Далі →</a>{% endif %}
-</div>
+{% if page.paginator.num_pages > 1 %}
+<nav class="pager" aria-label="Сторінки">
+  {% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}" title="Назад">←</a>{% endif %}
+  {% for p in page_range %}
+    {% if p == ellipsis %}<span class="gap">…</span>
+    {% elif p == page.number %}<span class="current" aria-current="page">{{ p }}</span>
+    {% else %}<a href="?{{ query }}&page={{ p }}">{{ p }}</a>{% endif %}
+  {% endfor %}
+  {% if page.has_next %}<a href="?{{ query }}&page={{ page.next_page_number }}" title="Далі">→</a>{% endif %}
+  <span class="dim">· рядків {{ page.start_index }}–{{ page.end_index }} з {{ page.paginator.count }}</span>
+</nav>
+{% endif %}
 {% endblock %}
