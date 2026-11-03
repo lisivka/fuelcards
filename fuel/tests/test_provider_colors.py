@@ -24,6 +24,7 @@ def test_admin_color_is_kept_by_ensure_all():
     assert ProviderConfig.row_colors()["upg"] == "#123456"
 
 
+@pytest.mark.django_db  # full_clean() перевіряє унікальність code через базу
 @pytest.mark.parametrize("value", ["red", "#12345", "#1234567", "#12345g", "#fff;}"])
 def test_invalid_color_is_rejected(value):
     config = ProviderConfig(code="upg", row_color=value)

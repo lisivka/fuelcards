@@ -1,14 +1,44 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .models import Card, ProviderConfig, Transaction
+from .services import MODE_DAYS, MODE_PERIOD, sync_configs
+
+MESSAGE_LEVELS = {
+    "info": messages.INFO,
+    "success": messages.SUCCESS,
+    "warning": messages.WARNING,
+    "error": messages.ERROR,
+}
 
 
 @admin.register(ProviderConfig)
 class ProviderConfigAdmin(admin.ModelAdmin):
-    list_display = ("code", "is_active", "edit_enabled", "color_swatch", "row_color")
-    list_editable = ("is_active", "edit_enabled", "row_color")
+    list_display = (
+        "code",
+        "is_active",
+        "edit_enabled",
+        "color_swatch",
+        "row_color",
+        "sync_days",
+        "sync_date_from",
+        "sync_date_to",
+    )
+    list_editable = ("is_active", "edit_enabled", "row_color", "sync_days", "sync_date_from", "sync_date_to")
+    actions = ("sync_by_days", "sync_by_period")
+
+    @admin.action(description="Синхронізувати вибраних за N днів (глибина з конфігурації)")
+    def sync_by_days(self, request, queryset) -> None:
+        self._run_sync(request, queryset, MODE_DAYS)
+
+    @admin.action(description="Синхронізувати вибраних за період з/по (з конфігурації)")
+    def sync_by_period(self, request, queryset) -> None:
+        self._run_sync(request, queryset, MODE_PERIOD)
+
+    def _run_sync(self, request, queryset, mode: str) -> None:
+        for message in sync_configs(queryset.order_by("code"), mode):
+            self.message_user(request, message.text, MESSAGE_LEVELS.get(message.level, messages.INFO))
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         # Палітра браузера замість текстового поля: адміністратор просто вибирає колір.

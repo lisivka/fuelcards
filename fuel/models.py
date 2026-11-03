@@ -1,6 +1,9 @@
+from datetime import date
+
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
+from django.utils import timezone
 
 
 class Provider(models.TextChoices):
@@ -63,6 +66,29 @@ DEFAULT_ROW_COLORS = {
 # Лише #RRGGBB: значення вставляється в CSS сторінок, тож довільний текст не допускаємо.
 hex_color_validator = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Колір у форматі #RRGGBB.")
 
+DEFAULT_SYNC_DAYS = 2
+MAX_SYNC_DAYS = 366  # межа одного запуску; всередині період ріжеться на частини (services.CHUNK_DAYS)
+
+
+def sync_period_error(date_from: date | None, date_to: date | None) -> str:
+    """Текст помилки для періоду синхронізації «з/по» або порожній рядок, якщо період коректний.
+
+    Порожній період (обидві дати не задані) вважається коректним для збереження в моделі;
+    дія синхронізації окремо вимагає, щоб обидві дати були задані.
+    """
+    if date_from is None and date_to is None:
+        return ""
+    if date_from is None or date_to is None:
+        return "Задайте обидві дати періоду: «з» і «по»."
+    if date_from > date_to:
+        return f"Дата «з» ({date_from:%d.%m.%Y}) пізніша за дату «по» ({date_to:%d.%m.%Y})."
+    if date_to > timezone.localdate():
+        return f"Дата «по» ({date_to:%d.%m.%Y}) у майбутньому."
+    days = (date_to - date_from).days + 1
+    if days > MAX_SYNC_DAYS:
+        return f"Період {days} днів довший за допустимі {MAX_SYNC_DAYS}."
+    return ""
+
 
 class ProviderConfig(models.Model):
     code = models.CharField("Код провайдера", max_length=20, unique=True)
@@ -76,6 +102,19 @@ class ProviderConfig(models.Model):
         validators=[hex_color_validator],
         help_text="Заливка рядків карток і транзакцій цього провайдера. Порожньо — без заливки.",
     )
+    sync_days = models.PositiveSmallIntegerField(
+        "Глибина синхронізації, днів",
+        default=DEFAULT_SYNC_DAYS,
+        validators=[MinValueValidator(1), MaxValueValidator(MAX_SYNC_DAYS)],
+        help_text="Для дії «Синхронізувати за N днів»: від сьогодні мінус N днів до сьогодні.",
+    )
+    sync_date_from = models.DateField(
+        "Синхронізувати з",
+        null=True,
+        blank=True,
+        help_text="Для дії «Синхронізувати за період з/по».",
+    )
+    sync_date_to = models.DateField("Синхронізувати по", null=True, blank=True)
 
     class Meta:
         verbose_name = "Конфігурація провайдера"
@@ -84,6 +123,12 @@ class ProviderConfig(models.Model):
 
     def __str__(self):
         return self.code
+
+    def clean(self):
+        super().clean()
+        error = sync_period_error(self.sync_date_from, self.sync_date_to)
+        if error:
+            raise ValidationError({"sync_date_to": error})
 
     @classmethod
     def ensure_all(cls):
