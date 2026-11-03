@@ -122,7 +122,7 @@ def test_single_page_has_no_pager(logged_client):
 
 @pytest.mark.django_db
 def test_sync_returns_to_same_report(logged_client, monkeypatch):
-    monkeypatch.setattr(views, "sync_since_last", lambda: ({}, []))
+    monkeypatch.setattr(views, "sync_since_last", lambda **_kwargs: ({}, []))
 
     response = logged_client.post(
         reverse("transactions_sync"), {"query": "period=30d&provider=upg&per_page=50&page=3&evil=1"}

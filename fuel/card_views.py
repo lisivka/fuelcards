@@ -123,7 +123,7 @@ def cards_sync(request):
     provider = _body(request).get("provider") or Provider.UKRNAFTA.value
 
     def run():
-        created, updated = svc.sync_cards(provider)
+        created, updated = svc.sync_cards(provider, user=request.user)
         return {"created": created, "updated": updated}
 
     return _safe(run)
@@ -135,7 +135,8 @@ def _json_card(card):
     return row
 
 # Куди повертає кнопка «Назад» зі сторінки картки (лише зі списку — без відкритих редиректів)
-BACK_TARGETS = {"transactions": "Транзакції", "cards": "Карти"}
+# Ключі — імена URL-маршрутів
+BACK_TARGETS = {"transactions": "Транзакції", "cards": "Карти", "logs": "Логи"}
 CARD_PAGE_TRANSACTIONS = 20
 CARD_PAGE_AUDIT = 20
 
@@ -168,6 +169,7 @@ def card_detail(request, pk):
             "audit_entries": card.audit_entries.select_related("user")[:CARD_PAGE_AUDIT],
             "back": back,
             "back_label": BACK_TARGETS[back],
+            "back_url": reverse(back),
             "st_active": CardStatus.ACTIVE.value,
             "st_blocked": CardStatus.BLOCKED.value,
         },

@@ -8,7 +8,8 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from .models import MAX_SYNC_DAYS, Card, ProviderConfig, Transaction, sync_period_error
+from .audit import record_sync
+from .models import MAX_SYNC_DAYS, AuditLog, Card, ProviderConfig, Transaction, sync_period_error
 from .providers import PROVIDERS
 from .providers.base import NormalizedTx
 
@@ -88,10 +89,11 @@ def run_sync(provider_names: list[str], date_from: date, date_to: date) -> dict:
     return results
 
 
-def sync_since_last() -> tuple[dict, list[str]]:
+def sync_since_last(*, user=None) -> tuple[dict, list[str]]:
     """Догружає кожному провайдеру дані від дня його останньої транзакції до сьогодні.
 
     Повертає (результати run_sync по провайдерах, провайдери, чий старт обмежено MAX_CATCHUP_DAYS).
+    Кожен виконаний (не пропущений) провайдер пишеться в журнал аудиту.
     """
     today = timezone.localdate()
     earliest = today - timedelta(days=MAX_CATCHUP_DAYS)
@@ -106,10 +108,42 @@ def sync_since_last() -> tuple[dict, list[str]]:
         was_capped = date_from < earliest
         if was_capped:
             date_from = earliest
-        results[name] = run_sync([name], date_from, today)[name]
-        if was_capped and isinstance(results[name], tuple):
+        result = results[name] = run_sync([name], date_from, today)[name]
+        if result is None:
+            continue
+        if was_capped and isinstance(result, tuple):
             capped.append(name)
+        _record_tx_sync(
+            name,
+            result,
+            user=user,
+            source=AuditLog.SOURCE_BUTTON,
+            date_from=date_from,
+            date_to=today,
+            capped=was_capped,
+        )
     return results, capped
+
+
+def _record_tx_sync(
+    name: str, result, *, user, source: str, date_from: date, date_to: date, **details
+) -> None:
+    """Запис результату run_sync у журнал: (нових, оновлено) або текст помилки."""
+    if isinstance(result, tuple):
+        details.update(created=result[0], updated=result[1])
+        error = ""
+    else:
+        error = str(result)
+    record_sync(
+        AuditLog.Action.TX_SYNC,
+        name,
+        user=user,
+        source=source,
+        date_from=date_from,
+        date_to=date_to,
+        error=error,
+        **details,
+    )
 
 
 def split_period(date_from: date, date_to: date, chunk_days: int = CHUNK_DAYS) -> list[tuple[date, date]]:
@@ -167,11 +201,13 @@ def sync_periods_chunked(
     chunk_days: int = CHUNK_DAYS,
     pause: float = CHUNK_PAUSE_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
+    user=None,
+    source: str = AuditLog.SOURCE_COMMAND,
 ) -> list[SyncMessage]:
     """Синхронізує кожного провайдера за його період частинами з паузою між запитами.
 
     Помилка в частині зупиняє решту частин цього провайдера (найчастіше це авторизація чи
-    недоступність API), але не інших провайдерів.
+    недоступність API), але не інших провайдерів. Підсумок по кожному провайдеру — у журнал аудиту.
     """
     messages: list[SyncMessage] = []
     first_request = True
@@ -185,8 +221,9 @@ def sync_periods_chunked(
                     f"{name}: період {period_text} розбито на {len(chunks)} частин по ≤{chunk_days} днів",
                 )
             )
-        created = updated = 0
+        created = updated = chunks_done = 0
         failed = skipped = False
+        error = ""
         for index, (chunk_from, chunk_to) in enumerate(chunks, start=1):
             if not first_request:
                 sleep(pause)
@@ -202,13 +239,28 @@ def sync_periods_chunked(
                 rest = "; решту частин пропущено" if index < len(chunks) else ""
                 messages.append(SyncMessage("error", f"{prefix}: {result}{rest}"))
                 failed = True
+                error = str(result)
                 break
             created += result[0]
             updated += result[1]
+            chunks_done += 1
             if len(chunks) > 1:
                 messages.append(SyncMessage("info", f"{prefix}: нових {result[0]}, оновлено {result[1]}"))
         if skipped:
             continue
+        record_sync(
+            AuditLog.Action.TX_SYNC,
+            name,
+            user=user,
+            source=source,
+            date_from=date_from,
+            date_to=date_to,
+            error=error,
+            chunks=len(chunks),
+            chunks_done=chunks_done,
+            created=created,
+            updated=updated,
+        )
         if failed:
             if created or updated:
                 messages.append(
@@ -224,7 +276,10 @@ def sync_periods_chunked(
 
 
 def sync_configs(configs: Iterable[ProviderConfig], mode: str, **kwargs) -> list[SyncMessage]:
-    """Синхронізація вибраних провайдерів за періодами з їхніх конфігурацій (адмінка, sync_fuel)."""
+    """Синхронізація вибраних провайдерів за періодами з їхніх конфігурацій (адмінка, sync_fuel).
+
+    kwargs ідуть у sync_periods_chunked (user, source, pause тощо).
+    """
     periods, messages = build_periods(configs, mode)
     if not periods:
         messages.append(SyncMessage("warning", "Немає провайдерів для синхронізації"))

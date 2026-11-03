@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from .models import CardStatus, Provider, ProviderConfig, Transaction
+from .models import AuditLog, CardStatus, Provider, ProviderConfig, Transaction
 from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
@@ -150,7 +150,7 @@ def transactions(request):
 @require_POST
 def transactions_sync(request):
     """Ручна синхронізація: від дня останньої транзакції кожного провайдера до сьогодні."""
-    results, capped = sync_since_last()
+    results, capped = sync_since_last(user=request.user)
 
     fetched = {name: res for name, res in results.items() if isinstance(res, tuple)}
     if fetched:
@@ -204,3 +204,54 @@ def _export_csv(qs, d_from, d_to):
             t.amount if t.amount is not None else "", t.station, "так" if t.canceled else "",
         ])
     return resp
+
+# Сторінка «Логи»: фільтр «Дія» -> набір дій журналу
+LOG_KINDS = [
+    ("", "Усі"),
+    ("cards", "Зміни карток"),
+    ("sync", "Синхронізації"),
+]
+LOGS_PER_PAGE = 20
+
+
+@login_required
+def logs(request):
+    """Журнал аудиту для всіх авторизованих: зміни карток і синхронізації."""
+    g = request.GET
+    kind = g.get("kind", "")
+    provider = g.get("provider", "")
+    errors_only = g.get("errors") == "1"
+
+    qs = AuditLog.objects.select_related("card")
+    if kind == "cards":
+        qs = qs.filter(action__in=AuditLog.CARD_ACTIONS)
+    elif kind == "sync":
+        qs = qs.filter(action__in=AuditLog.SYNC_ACTIONS)
+    else:
+        kind = ""
+    if provider in Provider.values:
+        qs = qs.filter(provider=provider)
+    else:
+        provider = ""
+    if errors_only:
+        qs = qs.filter(success=False)
+
+    paginator = Paginator(qs, LOGS_PER_PAGE)
+    page = paginator.get_page(g.get("page"))
+    params = {"kind": kind, "provider": provider, "errors": "1" if errors_only else ""}
+    return render(
+        request,
+        "fuel/logs.html",
+        {
+            "page": page,
+            "page_range": list(paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=3)),
+            "ellipsis": paginator.ELLIPSIS,
+            # kind= завжди в адресі: так скрипт збереження бачить, що фільтри задано явно
+            "query": urlencode({"kind": kind, **{k: v for k, v in params.items() if v and k != "kind"}}),
+            "kind": kind,
+            "provider": provider,
+            "errors_only": errors_only,
+            "kinds": LOG_KINDS,
+            "providers": Provider.choices,
+        },
+    )

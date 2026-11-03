@@ -31,7 +31,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 - **Transaction**: provider, external_id (унікальна пара), kind (fuel/topup), card (FK, може бути null), card_ref, vehicle_raw, timestamp, fuel, liters, price, amount, station, canceled, raw JSON, cards.id_vehicle (FK, може бути null), cards.id_driver (FK, може бути null).
 - **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note.
 - **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta), row_color, sync_days (глибина синхронізації, 1..366, типово 2), sync_date_from / sync_date_to (період для синхронізації «з/по»; обидві або жодна, «по» не в майбутньому).
-- **AuditLog**: created_at, user (+ знімок username), action (card_create / card_info / card_status / card_delete), card (FK, null після видалення) + card_label (знімок), provider, changes JSON `{поле: [було, стало]}`, via_api, success, error. Пишеться в `card_service` (`record_audit`); невдалий запис в API теж логується з success=False, база при цьому не змінюється.
+- **AuditLog**: created_at, user (+ знімок username), action (card_create / card_info / card_status / card_delete / tx_sync / cards_sync), details JSON для синхронізацій (source: button / admin_days / admin_period / command, date_from, date_to, chunks, chunks_done, created, updated, capped), card (FK, null після видалення) + card_label (знімок), provider, changes JSON `{поле: [було, стало]}`, via_api, success, error. Пишеться в `card_service` (`record_audit`); невдалий запис в API теж логується з success=False, база при цьому не змінюється. Синхронізації пишуться через `fuel/audit.py` (`record_sync`): один запис на провайдера за запуск, неактивні не пишуться. Перегляд — сторінка «Логи» (`/logs/`, усім авторизованим) і адмінка (лише читання). Очищення старих записів поки немає.
 - Синхронізація ідемпотентна: повторне завантаження оновлює записи (важливо для скасувань UkrNafta).
 
 ## 6. Провайдери (ключі лише в `.env`)
@@ -59,11 +59,8 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 
 
 ## 9. План далі
-- **[ЗАДАЧА 1]** Додати кнопку "Синхронізувати зараз" на сторінку «Транзакції» (виклик `sync_fuel`). Шукаємо останню дату в базі й завантажує від неї включно до теперішнього часу для кожного провайдера. Після успіху показує повідомлення про кількість нових транзакцій і дату останньої синхронізації.
-- **[ЗАДАЧА 2]** Налаштування та деплой конфігурації gunicorn + systemd для Ubuntu (порт 80, HTTP).
-- **[ЗАДАЧА 3]** Журнал логування/аудиту: хто, коли, яку картку, що змінив, помилки синхронізації, інші службові події. Можна в окрему таблицю `AuditLog` або в існуючі моделі (через JSONField). Зробити нову сторінку Логи (останні 20 подій, пагінація).
-- **[ЗАДАЧА 4]** Зміна ліміти карток через API для УкрНафта (спершу перевірити, чи підтримує це API кожного провайдера).
-- **[ЗАДАЧА 5]** Написати тести для перевірки функціональності (адаптери на збережених відповідях, сервіс карток із підміненим клієнтом), PEP8/ruff.
+
+Задачі, їхній стан і історія виконаних — лише в [`docs/TASKS.md`](docs/TASKS.md).
 
 ## 10. Безпека
 

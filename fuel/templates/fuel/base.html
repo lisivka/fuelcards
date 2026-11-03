@@ -65,6 +65,7 @@ td.n,th.n{text-align:right}
     {% if user.is_authenticated %}
       <a href="{% url 'transactions' %}">Транзакції</a>
       <a href="{% url 'cards' %}">Карти</a>
+      <a href="{% url 'logs' %}">Логи</a>
       {% if user.is_staff %}<a href="{% url 'admin:index' %}">Адмінка</a>{% endif %}
     {% endif %}
   </nav>
