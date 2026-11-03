@@ -7,7 +7,7 @@
 - Користувачів 3-5 працівників, лише локальна мережа.
 - Сервер: Ubuntu, адреса `http://192.168.1.173/` (HTTP, без HTTPS).
 - Хостинг: gunicorn + WhiteNoise під systemd, без nginx (порт 80, `AmbientCapabilities=CAP_NET_BIND_SERVICE`).
-- Синхронізація: є службова синхронізація (`manage.py sync_fuel --days 2`), яка запускається із django/admin. Кількість днів беремо із моделі `ProviderConfig` (default 2). Якщо провайдер неактивний, синхронізація його пропускає.
+- Синхронізація: службова команда `manage.py sync_fuel` — `--days N` (за замовчуванням 2), `--config-days` (глибина `ProviderConfig.sync_days` кожного провайдера), `--config-period` (період `sync_date_from`..`sync_date_to`), `--provider` для вибору. Те саме з адмінки: дії «Синхронізувати вибраних за N днів» / «за період з/по» в «Конфігураціях провайдерів». Неактивні провайдери пропускаються. Період понад 30 днів ділиться на частини по 30 днів з паузою 2 с (`services.CHUNK_DAYS`, `CHUNK_PAUSE_SECONDS`), максимум 366 днів; помилка частини зупиняє лише цього провайдера.
 - Синхронізація: є ручна кнопка «Синхронізувати зараз» на сторінці «Транзакції», яка синхронізує від останньої дати в базі даних. 
 - Оновлення: `git pull`, `pip install -r`, `migrate`, `collectstatic`, `systemctl restart`.
 - Репозиторій: https://github.com/lisivka/fuelcards (публічний; секрети лише в `.env`, у git не потрапляють).
@@ -30,7 +30,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 
 - **Transaction**: provider, external_id (унікальна пара), kind (fuel/topup), card (FK, може бути null), card_ref, vehicle_raw, timestamp, fuel, liters, price, amount, station, canceled, raw JSON, cards.id_vehicle (FK, може бути null), cards.id_driver (FK, може бути null).
 - **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note.
-- **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta).
+- **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta), row_color, sync_days (глибина синхронізації, 1..366, типово 2), sync_date_from / sync_date_to (період для синхронізації «з/по»; обидві або жодна, «по» не в майбутньому).
 - Синхронізація ідемпотентна: повторне завантаження оновлює записи (важливо для скасувань UkrNafta).
 
 ## 6. Провайдери (ключі лише в `.env`)
