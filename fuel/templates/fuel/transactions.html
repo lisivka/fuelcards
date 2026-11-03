@@ -182,7 +182,7 @@
   <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
   <td class="c-provider">{{ t.get_provider_display }}</td>
   <td class="c-kind">{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
-  <td class="c-card">{% if t.card %}{{ t.card.display_number }}{% else %}{{ t.card_ref }}{% endif %}</td>
+  <td class="c-card">{% if t.card %}<a href="{% url 'card_detail' t.card_id %}?back=transactions" title="Сторінка картки">{{ t.card.display_number }}</a>{% else %}{{ t.card_ref }}{% endif %}</td>
   <td class="c-cardid">{{ t.card_ref }}</td>
   <td class="c-vraw">{{ t.vehicle_raw }}</td>
   <td class="c-driver own">{% if t.card.driver_name %}{{ t.card.driver_name }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>

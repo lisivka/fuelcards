@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
-from .models import Card, ProviderConfig, Transaction
+from .models import AuditLog, Card, ProviderConfig, Transaction
 from .services import MODE_DAYS, MODE_PERIOD, sync_configs
 
 MESSAGE_LEVELS = {
@@ -70,3 +70,23 @@ class TransactionAdmin(admin.ModelAdmin):
     list_filter = ("provider", "kind", "canceled")
     search_fields = ("card_ref", "vehicle_raw", "station")
     date_hierarchy = "timestamp"
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    """Журнал лише для перегляду: записи створює застосунок, правити чи видаляти їх не можна."""
+
+    list_display = ("created_at", "username", "action", "card_label", "provider", "via_api", "success")
+    list_filter = ("action", "provider", "via_api", "success")
+    search_fields = ("username", "card_label", "error")
+    date_hierarchy = "created_at"
+    readonly_fields = [f.name for f in AuditLog._meta.fields]
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False

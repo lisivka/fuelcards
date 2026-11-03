@@ -4,7 +4,7 @@ from collections import Counter
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Card, CardStatus, Provider, ProviderConfig
+from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
 from .providers.petroline_cards import PetrolineCards
 from .providers.ukrnafta_cards import UkrnaftaCards
 
@@ -129,7 +129,53 @@ def sync_cards(provider: str) -> tuple[int, int]:
     return SYNCERS[provider]()
 
 
-def set_status(card: Card, new_status: int) -> None:
+def record_audit(
+    action: str,
+    card: Card,
+    user=None,
+    *,
+    changes: dict | None = None,
+    via_api: bool = False,
+    error: str = "",
+) -> AuditLog:
+    """Запис у журнал аудиту + рядок у лог сервера."""
+    username = user.get_username() if user is not None and user.is_authenticated else ""
+    entry = AuditLog.objects.create(
+        user=user if username else None,
+        username=username,
+        action=action,
+        card=card if card.pk else None,
+        card_label=str(card)[:200],
+        provider=card.provider,
+        changes=changes or {},
+        via_api=via_api,
+        success=not error,
+        error=error,
+    )
+    log.info(
+        "Аудит: %s %s картка %s:%s api=%s успіх=%s зміни=%s %s",
+        username or "-",
+        action,
+        card.provider,
+        card.number,
+        via_api,
+        not error,
+        changes or {},
+        error,
+    )
+    return entry
+
+
+def _call_api(action: str, card: Card, user, changes: dict, call) -> None:
+    """Виклик API провайдера; невдача теж потрапляє в журнал аудиту, потім помилка йде далі."""
+    try:
+        call()
+    except Exception as exc:
+        record_audit(action, card, user, changes=changes, via_api=True, error=str(exc)[:1000])
+        raise
+
+
+def set_status(card: Card, new_status: int, *, user=None) -> None:
     """Блокування/розблокування: спершу API, у базу пишемо лише після успіху."""
     if new_status not in (CardStatus.ACTIVE, CardStatus.BLOCKED):
         raise ValueError("Дозволено лише статуси «Активна» і «Заблокована»")
@@ -137,21 +183,81 @@ def set_status(card: Card, new_status: int) -> None:
         raise ValueError("Поточний статус невідомий або не дозволяє зміну. Оновіть статуси з UkrNafta")
     if not editable_map().get(card.provider):
         raise ValueError("Для цього провайдера режим редагування вимкнений")
-    CLIENTS[card.provider]().update_card(card.number, status=new_status)
-    card.status = new_status
-    card.status_updated_at = timezone.now()
-    card.save(update_fields=["status", "status_updated_at"])
+    changes = {"status": [card.status, int(new_status)]}
+    _call_api(
+        AuditLog.Action.CARD_STATUS,
+        card,
+        user,
+        changes,
+        lambda: CLIENTS[card.provider]().update_card(card.number, status=new_status),
+    )
+    with transaction.atomic():
+        card.status = new_status
+        card.status_updated_at = timezone.now()
+        card.save(update_fields=["status", "status_updated_at"])
+        record_audit(AuditLog.Action.CARD_STATUS, card, user, changes=changes, via_api=True)
 
 
-def update_info(card: Card, vehicle: str, driver_name: str) -> None:
-    """Авто/ПІБ: для провайдерів із режимом редагування спершу API, інакше лише локально."""
-    vehicle, driver_name = vehicle.strip()[:120], " ".join(driver_name.split())[:120]
-    if editable_map().get(card.provider):
-        last, first = split_name(driver_name)
-        kwargs = {"vin": vehicle}
-        if driver_name:
+def update_info(card: Card, vehicle: str, driver_name: str, note: str | None = None, *, user=None) -> bool:
+    """Авто/ПІБ/Примітка. Авто й ПІБ для провайдерів із режимом редагування спершу йдуть в API,
+    інакше (і примітка завжди) — лише в базу. Повертає False, якщо змін немає.
+    """
+    new = {
+        "vehicle": vehicle.strip()[:120],
+        "driver_name": " ".join(driver_name.split())[:120],
+    }
+    if note is not None:
+        new["note"] = note.strip()[:200]
+    changes = {field: [getattr(card, field), value] for field, value in new.items() if getattr(card, field) != value}
+    if not changes:
+        return False
+
+    api_changed = bool({"vehicle", "driver_name"} & changes.keys())
+    via_api = api_changed and bool(editable_map().get(card.provider))
+    if via_api:
+        last, first = split_name(new["driver_name"])
+        kwargs = {"vin": new["vehicle"]}
+        if new["driver_name"]:
             kwargs.update(last_name=last, first_name=first)
-        CLIENTS[card.provider]().update_card(card.number, **kwargs)
-    card.vehicle = vehicle
-    card.driver_name = driver_name
-    card.save(update_fields=["vehicle", "driver_name"])
+        _call_api(
+            AuditLog.Action.CARD_INFO,
+            card,
+            user,
+            changes,
+            lambda: CLIENTS[card.provider]().update_card(card.number, **kwargs),
+        )
+    with transaction.atomic():
+        for field, value in new.items():
+            setattr(card, field, value)
+        card.save(update_fields=list(new))
+        record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes, via_api=via_api)
+    return True
+
+
+# Пояснення, чому статус не можна змінити, для провайдерів без керування через API
+_NO_API_REASONS = {
+    Provider.PETROLINE.value: "API карток Petroline зараз лише читає: блокування не підтримується.",
+    Provider.UPG.value: "Для UPG немає API карток: зміни зберігаються лише в нашій базі.",
+}
+
+
+def capabilities(card: Card) -> dict:
+    """Що можна робити з карткою на її сторінці і чому ні."""
+    api_edit = bool(editable_map().get(card.provider))
+    status_known = card.status in (CardStatus.ACTIVE, CardStatus.BLOCKED)
+    if api_edit and not status_known:
+        status_hint = "Статус невідомий або не дозволяє зміну. Оновіть статуси з UkrNafta на сторінці «Карти»."
+    elif not api_edit and card.provider in CLIENTS:
+        status_hint = "Редагування через API вимкнене в «Конфігурації провайдера» або провайдер неактивний."
+    elif not api_edit:
+        status_hint = _NO_API_REASONS.get(card.provider, "Керування карткою через API не підтримується.")
+    else:
+        status_hint = ""
+    return {
+        "api_edit": api_edit,
+        "can_toggle_status": api_edit and status_known,
+        "next_status": CardStatus.ACTIVE if card.status == CardStatus.BLOCKED else CardStatus.BLOCKED,
+        "status_hint": status_hint,
+        # У провайдера з API, але з вимкненим редагуванням, зміни розійдуться з даними провайдера
+        "local_only_warning": card.provider in CLIENTS and not api_edit,
+    }

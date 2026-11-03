@@ -1,0 +1,140 @@
+{% extends "fuel/base.html" %}
+{% block content %}
+{% include "fuel/_provider_colors.html" %}
+<style>
+.card-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:15px}
+.card-head h1{font-size:20px;margin:0}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:15px;margin-bottom:20px}
+.panel{background:#fff;border:1px solid #e3e5e8;border-radius:6px;padding:12px 16px}
+.panel h2{font-size:16px;margin:0 0 10px}
+.info dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}
+.info dt{color:#666}
+.info dd{margin:0}
+.edit-form label{display:flex;flex-direction:column;font-size:12px;color:#555;margin-bottom:10px}
+.edit-form input{max-width:420px}
+.edit-form .hint{font-size:12px;margin-top:2px}
+.hint.api{color:#1b6b2f}
+.hint.local{color:#777}
+.warn{background:#fff4e0;border:1px solid #f0c070;border-radius:4px;padding:8px 12px;margin-bottom:10px}
+.status-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn-red{background:#d9534f;border-color:#b52b27;color:#fff}
+.btn-red:hover{background:#c9302c}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.changes{margin:0;padding-left:16px}
+.err{color:#a12a22}
+</style>
+
+<div class="card-head">
+  <a class="btn" href="{% if back == 'cards' %}{% url 'cards' %}{% else %}{% url 'transactions' %}{% endif %}">← {{ back_label }}</a>
+  <h1>{{ card.get_provider_display }} · {{ card.display_number }}</h1>
+  {% if card.status is not None %}
+  <span class="badge {% if card.status == st_active %}ok{% elif card.status == st_blocked %}bad{% endif %}">{{ card.get_status_display }}</span>
+  {% endif %}
+</div>
+
+<div class="card-grid">
+  <section class="panel info">
+    <h2>Інформація</h2>
+    <dl>
+      <dt>Постачальник</dt><dd>{{ card.get_provider_display }}</dd>
+      <dt>Номер на картці</dt><dd>{{ card.ext_number|default:card.number }}</dd>
+      <dt>Ідентифікатор</dt><dd>{{ card.number }}</dd>
+      <dt>ID у провайдера</dt><dd>{{ card.external_id|default:"—" }}</dd>
+      <dt>Статус</dt><dd>{% if card.status is not None %}{{ card.get_status_display }}{% else %}<span class="dim">невідомо</span>{% endif %}</dd>
+      <dt>Статус оновлено</dt><dd>{{ card.status_updated_at|date:"d.m.Y H:i"|default:"—" }}</dd>
+    </dl>
+
+    <h2 style="margin-top:16px">Блокування</h2>
+    <form method="post" class="status-row"
+          onsubmit="return confirm('{% if card.status == st_blocked %}Розблокувати{% else %}Заблокувати{% endif %} картку {{ card.display_number|escapejs }} у провайдера?');">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="status">
+      <input type="hidden" name="back" value="{{ back }}">
+      <input type="hidden" name="status" value="{{ caps.next_status }}">
+      {% if card.status == st_blocked %}
+        <button class="btn btn-green" {% if not caps.can_toggle_status %}disabled{% endif %}>Розблокувати</button>
+      {% else %}
+        <button class="btn btn-red" {% if not caps.can_toggle_status %}disabled{% endif %}>Заблокувати</button>
+      {% endif %}
+      {% if caps.status_hint %}<span class="dim">{{ caps.status_hint }}</span>{% endif %}
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Редагування</h2>
+    {% if caps.local_only_warning %}
+    <div class="warn">Редагування через API для цього провайдера вимкнене: зміни збережуться лише в нашій базі, у провайдера дані лишаться старі.</div>
+    {% endif %}
+    <form method="post" class="edit-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="back" value="{{ back }}">
+      <label>Авто
+        <input name="vehicle" value="{{ card.vehicle }}" maxlength="120">
+        {% if caps.api_edit %}<span class="hint api">змінюється у провайдера (поле VIN)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
+      </label>
+      <label>ПІБ водія
+        <input name="driver_name" value="{{ card.driver_name }}" maxlength="120">
+        {% if caps.api_edit %}<span class="hint api">змінюється у провайдера: прізвище та ім'я (по батькові API не приймає)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
+      </label>
+      <label>Примітка
+        <input name="note" value="{{ card.note }}" maxlength="200">
+        <span class="hint local">лише в нашій базі</span>
+      </label>
+      <button class="btn btn-green">Зберегти</button>
+    </form>
+  </section>
+</div>
+
+<section class="panel" style="margin-bottom:20px">
+  <h2>Журнал змін</h2>
+  {% if audit_entries %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Коли</th><th>Хто</th><th>Дія</th><th>Зміни</th><th>Через API</th><th>Результат</th></tr></thead>
+    <tbody>
+    {% for e in audit_entries %}
+    <tr>
+      <td>{{ e.created_at|date:"d.m.Y H:i:s" }}</td>
+      <td>{{ e.username|default:"—" }}</td>
+      <td>{{ e.get_action_display }}</td>
+      <td>{% with lines=e.changes_display %}{% if lines %}<ul class="changes">{% for line in lines %}<li>{{ line }}</li>{% endfor %}</ul>{% else %}<span class="dim">—</span>{% endif %}{% endwith %}</td>
+      <td>{% if e.via_api %}так{% else %}<span class="dim">ні</span>{% endif %}</td>
+      <td>{% if e.success %}<span class="badge ok">успішно</span>{% else %}<span class="badge bad">помилка</span> <span class="err">{{ e.error }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="dim">Змін ще не було.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Останні транзакції{% if transactions_total %} ({{ transactions|length }} з {{ transactions_total }}){% endif %}</h2>
+  {% if transactions %}
+  <p><a href="{% url 'transactions' %}?from={{ oldest_tx|date:'Y-m-d' }}&amp;to={% now 'Y-m-d' %}&amp;card={{ card.number|urlencode }}">Усі транзакції картки у звіті →</a></p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Дата</th><th>Тип</th><th>Пальне</th><th class="n">Літри</th><th class="n">Ціна</th><th class="n">Сума</th><th>АЗС</th></tr></thead>
+    <tbody>
+    {% for t in transactions %}
+    <tr class="pv-{{ t.provider }}{% if t.canceled %} canceled{% endif %}{% if t.kind == 'topup' %} topup{% endif %}">
+      <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
+      <td>{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>
+      <td>{{ t.fuel }}</td>
+      <td class="n">{{ t.liters|default_if_none:""|floatformat:2 }}</td>
+      <td class="n">{{ t.price|default_if_none:""|floatformat:2 }}</td>
+      <td class="n">{{ t.amount|default_if_none:""|floatformat:2 }}</td>
+      <td>{{ t.station }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="dim">Транзакцій ще немає.</p>
+  {% endif %}
+</section>
+{% endblock %}
