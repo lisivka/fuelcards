@@ -1,7 +1,14 @@
+import logging
+from collections import Counter
+
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Card, CardStatus, Provider, ProviderConfig
+from .providers.petroline_cards import PetrolineCards
 from .providers.ukrnafta_cards import UkrnaftaCards
+
+log = logging.getLogger(__name__)
 
 # Провайдери, для яких реалізоване керування картками через API
 CLIENTS = {Provider.UKRNAFTA.value: UkrnaftaCards}
@@ -26,6 +33,8 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "provider": card.provider,
         "provider_label": card.get_provider_display(),
         "number": card.number,
+        "ext_number": card.ext_number,
+        "display_number": card.display_number,
         "vehicle": card.vehicle,
         "driver_name": card.driver_name,
         "status": card.status,
@@ -61,6 +70,63 @@ def sync_ukrnafta_cards() -> tuple[int, int]:
         created += was_created
         updated += not was_created
     return created, updated
+
+
+def sync_petroline_cards() -> tuple[int, int]:
+    """Підтягує картки Petroline (лише читання): номер на картці, id, статус.
+
+    Ключ картки: Ідентифікатор (`number`). Порожнє Авто заповнюється назвою з Petroline,
+    заповнені Авто/ПІБ не чіпаємо.
+    """
+    rows = PetrolineCards().list_cards()
+    unknown = Counter(row["api_status"] for row in rows if row["status"] is None)
+    if unknown:
+        log.warning("Petroline: невідомі коди статусу карток: %s", dict(unknown))
+    created = updated = 0
+    now = timezone.now()
+    with transaction.atomic():
+        for row in rows:
+            card, was_created = Card.objects.get_or_create(
+                provider=Provider.PETROLINE.value, number=row["number"],
+                defaults={"vehicle": row["label"][:120]},
+            )
+            if not was_created and not card.vehicle and row["label"]:
+                card.vehicle = row["label"][:120]
+            card.ext_number = row["ext_number"][:64]
+            card.external_id = row["external_id"][:32]
+            card.status = row["status"]
+            card.status_updated_at = now
+            card.save()
+            created += was_created
+            updated += not was_created
+    log.info("Petroline: картки оновлено, нових %s, оновлено %s", created, updated)
+    return created, updated
+
+
+# Читання карток із API провайдера (кнопки «Оновити …» на сторінці «Карти»)
+SYNCERS = {
+    Provider.UKRNAFTA.value: sync_ukrnafta_cards,
+    Provider.PETROLINE.value: sync_petroline_cards,
+}
+SYNC_LABELS = {
+    Provider.UKRNAFTA.value: "Оновити статуси UkrNafta",
+    Provider.PETROLINE.value: "Оновити карти Petroline",
+}
+
+
+def sync_map() -> dict:
+    """{code: True/False}: чи доступне оновлення карток провайдера (достатньо, щоб він був активний)."""
+    configs = ProviderConfig.ensure_all()
+    return {code: bool(cfg.is_active and code in SYNCERS) for code, cfg in configs.items()}
+
+
+def sync_cards(provider: str) -> tuple[int, int]:
+    """Оновлення карток обраного провайдера; повертає (нових, оновлено)."""
+    if provider not in SYNCERS:
+        raise ValueError("Для цього провайдера оновлення карток не підтримується")
+    if not sync_map().get(provider):
+        raise ValueError("Провайдер неактивний")
+    return SYNCERS[provider]()
 
 
 def set_status(card: Card, new_status: int) -> None:

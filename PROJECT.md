@@ -20,7 +20,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 
 - `config/` налаштування Django; `fuel/` єдиний додаток.
 - `fuel/models.py`: `Provider` (TextChoices), `CardStatus`, `ProviderConfig`, `Card`, `Transaction`.
-- `fuel/providers/`: адаптери `petroline.py`, `upg.py`, `ukrnafta.py` (транзакції) та `ukrnafta_cards.py` (картки), спільне в `base.py` (`NormalizedTx`).
+- `fuel/providers/`: адаптери `petroline.py`, `upg.py`, `ukrnafta.py` (транзакції) та `ukrnafta_cards.py`, `petroline_cards.py` (картки), спільне в `base.py` (`NormalizedTx`).
 - `fuel/services.py`: upsert транзакцій, `run_sync` (збій одного провайдера не зупиняє інших, неактивні пропускаються).
 - `fuel/card_service.py`, `fuel/card_views.py`: логіка й JSON-ендпоінти сторінки «Карти».
 - `fuel/management/commands/`: `sync_fuel`, `sync_cards`.
@@ -29,13 +29,15 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 ## 5. Модель даних
 
 - **Transaction**: provider, external_id (унікальна пара), kind (fuel/topup), card (FK, може бути null), card_ref, vehicle_raw, timestamp, fuel, liters, price, amount, station, canceled, raw JSON, cards.id_vehicle (FK, може бути null), cards.id_driver (FK, може бути null).
-- **Card**: provider+number (унікальна пара), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note.
+- **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note.
 - **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta).
 - Синхронізація ідемпотентна: повторне завантаження оновлює записи (важливо для скасувань UkrNafta).
 
 ## 6. Провайдери (ключі лише в `.env`)
 
 **Petroline**: `POST http://fms.petroline.in.ua:8055/api/TransactionsGet`, тіло JSON: `login`, `pass` (SHA256 hex), `datestart`, `datefinish` (формат `dd.MM.yyyy HH:mm:ss`). У відповіді `Result[]`: TransactionID, Date, Value, AZSname, Card1, PersonName (вільний текст), Fuel. Немає ціни й суми. `Value` трактується як мілілітри (ділення на 1000, змінна `PETROLINE_VALUE_DIVISOR`), час вважається київським. Пароль у `.env` може бути як звичайним, так і готовим хешем.
+
+**Petroline, картки (новий API, лише читання)**: `POST https://apiv2.petroline.in.ua/api/Auth/token` (login, password — звичайний, не хеш) → токен; далі список `Keys/list` з пагінацією. Статуси 3 → Активна, 5 → Заблокована, інші не вгадуються (None, з попередженням у лог). Облікові дані: `PETROLINE_V2_LOGIN`/`PETROLINE_V2_PASSWORD`, запасні `PETROLINE_LOGIN`/`PETROLINE_PASSWORD`.
 
 **UPG**: спершу `POST https://paycontainer.upg.ua/api/login` (login, password) повертає Bearer-токен (брати свіжий на кожну синхронізацію). Далі `POST .../api/fuel-card-history` (form: date_from, date_to = кінець + 1 день, page), пагінація за `meta.last_page`. Номер картки в UPG часткові («031 992»). У `.env`: `UPG_LOGIN`, `UPG_PASSWORD`.
 

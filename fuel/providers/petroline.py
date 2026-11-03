@@ -1,9 +1,7 @@
 import hashlib
 import os
-import re
 from datetime import date, datetime
 from decimal import Decimal
-from urllib.parse import urlencode
 
 import requests
 
