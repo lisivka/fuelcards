@@ -142,6 +142,7 @@ def test_model_clean_validates_period():
 # --- запуск частинами ---------------------------------------------------------------------------
 
 
+@pytest.mark.django_db  # підсумок пишеться в журнал аудиту
 def test_chunked_sync_pauses_between_requests(monkeypatch):
     fake = FakeRunSync(result=(2, 1))
     monkeypatch.setattr(services, "run_sync", fake)
@@ -160,6 +161,7 @@ def test_chunked_sync_pauses_between_requests(monkeypatch):
     assert "нових 6, оновлено 3" in messages[-1].text
 
 
+@pytest.mark.django_db  # підсумок пишеться в журнал аудиту
 def test_chunk_error_stops_provider_but_not_others(monkeypatch):
     fake = FakeRunSync(errors={"upg"})
     monkeypatch.setattr(services, "run_sync", fake)

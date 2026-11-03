@@ -1,0 +1,23 @@
+{% comment %}
+Запам'ятовування параметрів звіту в браузері. Підключати в {% block extra_head %}:
+{% include "fuel/_remember_query.html" with key="fuel.<сторінка>.report" %}
+{% endcomment %}
+<script>
+/* Збережений звіт (фільтри, сторінка, к-сть рядків) живе в localStorage браузера.
+   Сторінку відкрили без параметрів (меню, повернення з іншої сторінки) — відновлюємо останній
+   звіт ще до показу сторінки. Інакше запам'ятовуємо поточний. */
+(function () {
+  var KEY = "{{ key|escapejs }}";
+  var search = window.location.search.replace(/^\?/, "");
+  try {
+    if (search === "") {
+      var saved = localStorage.getItem(KEY);
+      if (saved) { window.location.replace("?" + saved); }
+      return;
+    }
+    var params = new URLSearchParams(search);
+    params.delete("export");
+    localStorage.setItem(KEY, params.toString());
+  } catch (e) { /* сховище недоступне: працюємо без збереження */ }
+})();
+</script>

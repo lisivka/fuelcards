@@ -206,6 +206,27 @@ class AuditLog(models.Model):
         CARD_INFO = "card_info", "Зміна даних картки"
         CARD_STATUS = "card_status", "Зміна статусу картки"
         CARD_DELETE = "card_delete", "Видалення картки"
+        TX_SYNC = "tx_sync", "Синхронізація транзакцій"
+        CARDS_SYNC = "cards_sync", "Оновлення карток"
+
+    # Звідки запущено синхронізацію (details["source"])
+    SOURCE_BUTTON = "button"
+    SOURCE_ADMIN_DAYS = "admin_days"
+    SOURCE_ADMIN_PERIOD = "admin_period"
+    SOURCE_COMMAND = "command"
+    SOURCE_LABELS = {
+        SOURCE_BUTTON: "кнопка на сторінці",
+        SOURCE_ADMIN_DAYS: "адмінка, за N днів",
+        SOURCE_ADMIN_PERIOD: "адмінка, за період з/по",
+        SOURCE_COMMAND: "команда manage.py",
+    }
+    CARD_ACTIONS = (
+        Action.CARD_CREATE,
+        Action.CARD_INFO,
+        Action.CARD_STATUS,
+        Action.CARD_DELETE,
+    )
+    SYNC_ACTIONS = (Action.TX_SYNC, Action.CARDS_SYNC)
 
     # Підписи полів для читабельного опису змін
     FIELD_LABELS = {
@@ -239,6 +260,8 @@ class AuditLog(models.Model):
     card_label = models.CharField("Картка (знімок)", max_length=200, blank=True)
     provider = models.CharField("Постачальник", max_length=20, blank=True)
     changes = models.JSONField("Зміни", default=dict, blank=True)  # {"поле": [було, стало]}
+    # Підсумок синхронізації: source, date_from, date_to (ISO), chunks, created, updated, capped
+    details = models.JSONField("Деталі", default=dict, blank=True)
     via_api = models.BooleanField("Через API провайдера", default=False)
     success = models.BooleanField("Успішно", default=True)
     error = models.TextField("Помилка", blank=True)
@@ -251,6 +274,31 @@ class AuditLog(models.Model):
     def __str__(self):
         return f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.get_action_display()} {self.card_label}"
 
+    @property
+    def who(self) -> str:
+        """Хто виконав дію; для запусків командою користувача немає."""
+        if self.username:
+            return self.username
+        if (self.details or {}).get("source") == self.SOURCE_COMMAND:
+            return "система (команда)"
+        return "—"
+
+    def details_display(self) -> list[str]:
+        """Підсумок синхронізації рядками для сторінки «Логи»."""
+        d = self.details or {}
+        lines = []
+        if d.get("date_from") and d.get("date_to"):
+            lines.append(f"Період: {_fmt_date(d['date_from'])} .. {_fmt_date(d['date_to'])}")
+        if "created" in d or "updated" in d:
+            lines.append(f"Нових: {d.get('created', 0)}, оновлено: {d.get('updated', 0)}")
+        if d.get("chunks", 0) > 1:
+            lines.append(f"Частин: {d.get('chunks_done', d['chunks'])} з {d['chunks']}")
+        if d.get("capped"):
+            lines.append("Початок обмежено останніми 31 днями")
+        if d.get("source"):
+            lines.append(f"Запуск: {self.SOURCE_LABELS.get(d['source'], d['source'])}")
+        return lines
+
     def changes_display(self) -> list[str]:
         """Зміни у вигляді «Авто: «старе» → «нове»»."""
         lines = []
@@ -261,6 +309,13 @@ class AuditLog(models.Model):
                 old, new = _status_label(old), _status_label(new)
             lines.append(f"{label}: «{old or ''}» → «{new or ''}»")
         return lines
+
+
+def _fmt_date(value: str) -> str:
+    try:
+        return date.fromisoformat(value).strftime("%d.%m.%Y")
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _status_label(value) -> str:

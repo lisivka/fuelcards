@@ -25,7 +25,7 @@
 </style>
 
 <div class="card-head">
-  <a class="btn" href="{% if back == 'cards' %}{% url 'cards' %}{% else %}{% url 'transactions' %}{% endif %}">← {{ back_label }}</a>
+  <a class="btn" href="{{ back_url }}">← {{ back_label }}</a>
   <h1>{{ card.get_provider_display }} · {{ card.display_number }}</h1>
   {% if card.status is not None %}
   <span class="badge {% if card.status == st_active %}ok{% elif card.status == st_blocked %}bad{% endif %}">{{ card.get_status_display }}</span>

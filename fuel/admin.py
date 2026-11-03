@@ -37,7 +37,8 @@ class ProviderConfigAdmin(admin.ModelAdmin):
         self._run_sync(request, queryset, MODE_PERIOD)
 
     def _run_sync(self, request, queryset, mode: str) -> None:
-        for message in sync_configs(queryset.order_by("code"), mode):
+        source = AuditLog.SOURCE_ADMIN_DAYS if mode == MODE_DAYS else AuditLog.SOURCE_ADMIN_PERIOD
+        for message in sync_configs(queryset.order_by("code"), mode, user=request.user, source=source):
             self.message_user(request, message.text, MESSAGE_LEVELS.get(message.level, messages.INFO))
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
@@ -76,7 +77,7 @@ class TransactionAdmin(admin.ModelAdmin):
 class AuditLogAdmin(admin.ModelAdmin):
     """Журнал лише для перегляду: записи створює застосунок, правити чи видаляти їх не можна."""
 
-    list_display = ("created_at", "username", "action", "card_label", "provider", "via_api", "success")
+    list_display = ("created_at", "who", "action", "card_label", "provider", "via_api", "success")
     list_filter = ("action", "provider", "via_api", "success")
     search_fields = ("username", "card_label", "error")
     date_hierarchy = "created_at"

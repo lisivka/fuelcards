@@ -1,0 +1,15 @@
+{% comment %}
+Нумерована пагінація. Потрібні в контексті: page, page_range (Paginator.get_elided_page_range), ellipsis, query (параметри звіту без page).
+{% endcomment %}
+{% if page.paginator.num_pages > 1 %}
+<nav class="pager" aria-label="Сторінки">
+  {% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}" title="Назад">←</a>{% endif %}
+  {% for p in page_range %}
+    {% if p == ellipsis %}<span class="gap">…</span>
+    {% elif p == page.number %}<span class="current" aria-current="page">{{ p }}</span>
+    {% else %}<a href="?{{ query }}&page={{ p }}">{{ p }}</a>{% endif %}
+  {% endfor %}
+  {% if page.has_next %}<a href="?{{ query }}&page={{ page.next_page_number }}" title="Далі">→</a>{% endif %}
+  <span class="dim">· рядків {{ page.start_index }}–{{ page.end_index }} з {{ page.paginator.count }}</span>
+</nav>
+{% endif %}

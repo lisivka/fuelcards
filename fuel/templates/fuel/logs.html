@@ -1,0 +1,65 @@
+{% extends "fuel/base.html" %}
+{% block extra_head %}
+{% include "fuel/_remember_query.html" with key="fuel.logs.report" %}
+{% endblock %}
+{% block content %}
+<style>
+.logs-table td{vertical-align:top}
+.logs-table ul{margin:0;padding-left:16px}
+.logs-table .err{color:#a12a22}
+.logs-table tr.failed > td{background:#fdf1f0}
+</style>
+
+<form method="get" class="filters" id="logs-form">
+  <label>Дія
+    <select name="kind" onchange="this.form.submit()">
+      {% for value, label in kinds %}<option value="{{ value }}" {% if value == kind %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Постачальник
+    <select name="provider" onchange="this.form.submit()">
+      <option value="">Усі</option>
+      {% for value, label in providers %}<option value="{{ value }}" {% if value == provider %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="inline"><input type="checkbox" name="errors" value="1" {% if errors_only %}checked{% endif %} onchange="this.form.submit()"> Лише помилки</label>
+  <div class="actions">
+    <a class="btn" href="{% url 'logs' %}?kind=" id="logs-reset"
+       onclick="try{localStorage.removeItem('fuel.logs.report')}catch(e){}">Скинути фільтри</a>
+  </div>
+</form>
+
+<div class="table-wrap">
+<table class="logs-table">
+<thead><tr>
+  <th>Коли</th><th>Хто</th><th>Дія</th><th>Пост.</th><th>Об'єкт</th><th>Деталі</th><th>Результат</th>
+</tr></thead>
+<tbody>
+{% for e in page %}
+<tr{% if not e.success %} class="failed"{% endif %}>
+  <td style="white-space:nowrap">{{ e.created_at|date:"d.m.Y H:i:s" }}</td>
+  <td>{{ e.who }}</td>
+  <td>{{ e.get_action_display }}{% if e.via_api %} <span class="dim">(API)</span>{% endif %}</td>
+  <td>{{ e.provider|default:"—" }}</td>
+  <td>
+    {% if e.card_id %}<a href="{% url 'card_detail' e.card_id %}?back=logs">{{ e.card_label }}</a>
+    {% elif e.card_label %}{{ e.card_label }} <span class="dim">(видалена)</span>
+    {% else %}<span class="dim">—</span>{% endif %}
+  </td>
+  <td>
+    {% with lines=e.changes_display details=e.details_display %}
+    {% if lines or details %}<ul>{% for line in lines %}<li>{{ line }}</li>{% endfor %}{% for line in details %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% else %}<span class="dim">—</span>{% endif %}
+    {% endwith %}
+  </td>
+  <td>{% if e.success %}<span class="badge ok">успішно</span>{% else %}<span class="badge bad">помилка</span><div class="err">{{ e.error }}</div>{% endif %}</td>
+</tr>
+{% empty %}
+<tr><td colspan="7">Записів немає</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+{% include "fuel/_pager.html" %}
+{% endblock %}

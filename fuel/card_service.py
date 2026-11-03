@@ -4,6 +4,7 @@ from collections import Counter
 from django.db import transaction
 from django.utils import timezone
 
+from .audit import record_sync, username_of
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
 from .providers.petroline_cards import PetrolineCards
 from .providers.ukrnafta_cards import UkrnaftaCards
@@ -120,13 +121,21 @@ def sync_map() -> dict:
     return {code: bool(cfg.is_active and code in SYNCERS) for code, cfg in configs.items()}
 
 
-def sync_cards(provider: str) -> tuple[int, int]:
-    """Оновлення карток обраного провайдера; повертає (нових, оновлено)."""
+def sync_cards(provider: str, *, user=None, source: str = AuditLog.SOURCE_BUTTON) -> tuple[int, int]:
+    """Оновлення карток обраного провайдера; повертає (нових, оновлено). Результат — у журнал аудиту."""
     if provider not in SYNCERS:
         raise ValueError("Для цього провайдера оновлення карток не підтримується")
     if not sync_map().get(provider):
         raise ValueError("Провайдер неактивний")
-    return SYNCERS[provider]()
+    try:
+        created, updated = SYNCERS[provider]()
+    except Exception as exc:
+        record_sync(AuditLog.Action.CARDS_SYNC, provider, user=user, source=source, error=str(exc))
+        raise
+    record_sync(
+        AuditLog.Action.CARDS_SYNC, provider, user=user, source=source, created=created, updated=updated
+    )
+    return created, updated
 
 
 def record_audit(
@@ -139,7 +148,7 @@ def record_audit(
     error: str = "",
 ) -> AuditLog:
     """Запис у журнал аудиту + рядок у лог сервера."""
-    username = user.get_username() if user is not None and user.is_authenticated else ""
+    username = username_of(user)
     entry = AuditLog.objects.create(
         user=user if username else None,
         username=username,
