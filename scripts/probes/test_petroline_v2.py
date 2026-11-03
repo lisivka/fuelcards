@@ -1,9 +1,9 @@
 """Розвідка нового API Petroline (https://apiv2.petroline.in.ua). ТІЛЬКИ ЧИТАННЯ.
 
 Запуск з кореня проєкту (де лежить .env):
-    python test_petroline_v2.py
-    python test_petroline_v2.py --from 2026-10-28 --to 2026-10-29
-    python test_petroline_v2.py --no-db          # без порівняння з локальною базою
+    python scripts/probes/test_petroline_v2.py
+    python scripts/probes/test_petroline_v2.py --from 2026-10-28 --to 2026-10-29
+    python scripts/probes/test_petroline_v2.py --no-db   # без порівняння з локальною базою
 
 Скрипт нічого не змінює в Petroline: отримує токен і читає списки.
 Токен і пароль у вивід не потрапляють, PIN замінюється на ***.
@@ -27,6 +27,7 @@ TIMEOUT = 60
 KYIV = ZoneInfo("Europe/Kyiv")
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 SENSITIVE_KEYS = {"pin", "password", "token", "secret"}
+ROOT = Path(__file__).resolve().parents[2]  # корінь проєкту (де .env і manage.py)
 
 
 # ---------- допоміжне ----------
@@ -182,7 +183,7 @@ def fetch_paged(session, path, variants, label, take, limit):
 
 def setup_django():
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        sys.path.insert(0, str(ROOT))
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
         import django
 
@@ -237,6 +238,29 @@ def compare_transactions(env, records, d_from, d_to):
         else:
             unmatched.append(rec)
     print(f"Збіг за ID: {matched} із {len(records)} записів v2")
+    print("Сирі значення date у v2 (часовий пояс):", [rec.get("date") for rec in records[:3]])
+    print("Приклад timestamp у базі:", [t.timestamp.isoformat() for t in db[:3]])
+
+    print("\nОдиниці об'єму (v2 value / valueLitr / value15 проти liters у базі):")
+    shown = 0
+    for rec in records:
+        t = db_by_id.get(str(rec.get("id")))
+        if t is None:
+            continue
+        print(f"  id={rec.get('id')}: value={rec.get('value')} valueLitr={rec.get('valueLitr')} "
+              f"value15={rec.get('value15')} | база liters={t.liters}; "
+              f"дата v2={rec.get('date')} | база={t.timestamp.isoformat()}")
+        shown += 1
+        if shown >= 8:
+            break
+
+    card_numbers = set(Card.objects.filter(provider=Provider.PETROLINE.value).values_list("number", flat=True))
+    with_card = [rec for rec in records if rec.get("card1Number")]
+    found = sum(1 for rec in with_card if str(rec["card1Number"]) in card_numbers)
+    print(f"\ncard1Number є у {len(with_card)} із {len(records)} записів; "
+          f"з них знайдено серед Card.number: {found}")
+    print("Приклад card1Number / card1Type / card2Number:",
+          [(rec.get("card1Number"), rec.get("card1Type"), rec.get("card2Number")) for rec in records[:5]])
 
     pairs = []
     for rec in unmatched[:200]:
@@ -301,9 +325,9 @@ def parse_args():
     p.add_argument("--take", type=int, default=100, help="розмір сторінки")
     p.add_argument("--max", dest="limit", type=int, default=1000, help="максимум записів на запит")
     p.add_argument("--login-env", default="PETROLINE_LOGIN", help="назва змінної .env з логіном")
-    p.add_argument("--password-env", default="PETROLINE_PASSWORD", help="назва змінної .env з паролем")
+    p.add_argument("--password-env", default="PETROLINE_PASS", help="назва змінної .env з паролем")
     p.add_argument("--no-db", action="store_true", help="не порівнювати з локальною базою")
-    p.add_argument("--out", default="petroline_v2_probe.json")
+    p.add_argument("--out", default=str(ROOT / "petroline_v2_probe.json"))
     return p.parse_args()
 
 
@@ -311,21 +335,18 @@ def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     args = parse_args()
-    # load_dotenv(Path(__file__).resolve().parent / ".env")
-    BASE_DIR = Path(__file__).resolve().parent
-    load_dotenv(BASE_DIR / '.env')
-    login = (os.environ.get("PETROLINE_LOGIN") or os.environ.get(args.env, "")).strip()
-    password = (os.environ.get("PETROLINE_PASS") or os.environ.get(args.env, "")).strip()
-    # login = os.environ.get("PETROLINE_LOGIN", "").strip()
-    # password = os.environ.get("PETROLINE_PASS", "").strip()
-    print(f"Використовуються змінні .env: {args.login_env}={login[:2]}***, {args.password_env}={'***' if password else '(порожньо)'}")
+    load_dotenv(ROOT / ".env")
+    login = os.environ.get(args.login_env, "").strip()
+    password = os.environ.get(args.password_env, "").strip()
+    print(f"Змінні .env: {args.login_env}={'задано' if login else '(порожньо)'}, "
+          f"{args.password_env}={'задано' if password else '(порожньо)'}")
     if not login or not password:
         sys.exit(f"Не знайдено логін/пароль у .env (змінні {args.login_env} / {args.password_env}). "
                  "Вкажіть назви через --login-env / --password-env.")
     if SHA256_RE.match(password):
         sys.exit("У .env схоже на SHA256-хеш пароля. Нове API очікує звичайний пароль: "
-                 "додайте PETROLINE_V2_PASSWORD у .env.")
-    print(f"Логін: {login[:2]}***, період {args.date_from}..{args.date_to} (київський час)")
+                 "вкажіть іншу змінну через --password-env.")
+    print(f"Період {args.date_from}..{args.date_to} (київський час)")
 
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {get_token(login, password)}", "Accept": "application/json"})
@@ -371,6 +392,16 @@ def main():
         results["total_response"] = total
     results["transactions_total"] = len(tx)
     results["transactions_sample"] = tx[:5]
+
+    print("\n########## 4. Ліміти (лише читання) ##########")
+    status, data = call(session, "GET", "/api/LibFuelType", label="LibFuelType")
+    show(data, 1500)
+    results["fuel_types"] = data
+    for path, label in (("/api/PersonLimit/list", "PersonLimit"), ("/api/TransportLimit/list", "TransportLimit")):
+        _, sample = fetch_paged(session, path, list_variants(), f"{label}/list", 5, 5)
+        print(f"{label}: отримано {len(sample)} (перша сторінка)")
+        show(sample[:3], 2500)
+        results[f"{label.lower()}_sample"] = sample[:3]
 
     if not args.no_db:
         env = setup_django()
