@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 
 
@@ -51,10 +53,29 @@ class Card(models.Model):
         return self.ext_number or self.number
 
 
+# Кольори заливки рядків за замовчуванням; адміністратор змінює їх у «Конфігурації провайдера».
+DEFAULT_ROW_COLORS = {
+    Provider.UKRNAFTA: "#e9e9e9",  # світло-сірий
+    Provider.PETROLINE: "#fde0e0",  # світло-червоний
+    Provider.UPG: "#dff3df",  # світло-зелений
+}
+
+# Лише #RRGGBB: значення вставляється в CSS сторінок, тож довільний текст не допускаємо.
+hex_color_validator = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Колір у форматі #RRGGBB.")
+
+
 class ProviderConfig(models.Model):
     code = models.CharField("Код провайдера", max_length=20, unique=True)
     is_active = models.BooleanField("Активний", default=True)
     edit_enabled = models.BooleanField("Можна змінювати картки", default=True)
+    row_color = models.CharField(
+        "Колір рядків",
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[hex_color_validator],
+        help_text="Заливка рядків карток і транзакцій цього провайдера. Порожньо — без заливки.",
+    )
 
     class Meta:
         verbose_name = "Конфігурація провайдера"
@@ -70,10 +91,26 @@ class ProviderConfig(models.Model):
         for code, _label in Provider.choices:
             config, _ = cls.objects.get_or_create(
                 code=code,
-                defaults={"is_active": True, "edit_enabled": True},
+                defaults={
+                    "is_active": True,
+                    "edit_enabled": True,
+                    "row_color": DEFAULT_ROW_COLORS.get(code, ""),
+                },
             )
             configs[code] = config
         return configs
+
+    @classmethod
+    def row_colors(cls) -> dict[str, str]:
+        """{code: "#rrggbb"} лише для провайдерів із коректно заданим кольором."""
+        colors = {}
+        for code, config in cls.ensure_all().items():
+            try:
+                hex_color_validator(config.row_color)
+            except ValidationError:
+                continue
+            colors[code] = config.row_color.lower()
+        return colors
 
 
 class Transaction(models.Model):

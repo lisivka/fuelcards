@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from .models import CardStatus, Provider, Transaction
+from .models import CardStatus, Provider, ProviderConfig, Transaction
 from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
@@ -91,6 +91,7 @@ def transactions(request):
         "vehicle": vehicle, "q": q, "query": query,
         "providers": Provider.choices, "statuses": STATUS_CHOICES,
         "column_choices": COLUMN_CHOICES,
+        "provider_colors": ProviderConfig.row_colors(),
         "st_active": CardStatus.ACTIVE.value, "st_blocked": CardStatus.BLOCKED.value,
     })
 

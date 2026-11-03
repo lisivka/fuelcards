@@ -23,6 +23,31 @@
         color: #fff;
     }
 
+    .seg {
+        display: inline-flex;
+        border: 1px solid #1f3a5f;
+        border-radius: 16px;
+        overflow: hidden;
+    }
+
+    .seg-btn {
+        border: 0;
+        border-left: 1px solid #1f3a5f;
+        background: #fff;
+        color: #1f3a5f;
+        cursor: pointer;
+        padding: 6px 12px;
+    }
+
+    .seg-btn:first-child {
+        border-left: 0;
+    }
+
+    .seg-btn.active {
+        background: #1f3a5f;
+        color: #fff;
+    }
+
     td input.v, td input.d {
         width: 100%;
         box-sizing: border-box;
@@ -79,6 +104,7 @@
         opacity: 0.6;
     }
 </style>
+{% include "fuel/_provider_colors.html" %}
 {% endblock %}
 
 
@@ -101,6 +127,12 @@
                     {{ label }}
                 </button>
             {% endfor %}
+        </span>
+
+        <span id="state-switch" class="seg" role="group" aria-label="Стан картки">
+            <button type="button" class="seg-btn active" data-s="">Всі</button>
+            <button type="button" class="seg-btn" data-s="active">Активні</button>
+            <button type="button" class="seg-btn" data-s="inactive">Неактивні</button>
         </span>
 
         <input
@@ -140,6 +172,7 @@
             <tr>
                 <th>Постачальник</th>
                 <th>Номер картки</th>
+                <th>Ідентифікатор</th>
                 <th>Авто</th>
                 <th>ПІБ водія</th>
                 <th>Статус</th>
@@ -150,6 +183,7 @@
         <tbody>
             {% for r in rows %}
                 <tr
+                    class="pv-{{ r.provider }}"
                     data-id="{{ r.id }}"
                     data-provider="{{ r.provider }}"
                     data-number="{{ r.display_number }}"
@@ -158,7 +192,8 @@
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
                 >
                     <td>{{ r.provider_label }}</td>
-                    <td{% if r.ext_number %} title="Ідентифікатор: {{ r.number }}"{% endif %}>{{ r.display_number }}</td>
+                    <td>{{ r.display_number }}</td>
+                    <td>{% if r.ext_number %}{{ r.number }}{% else %}<span class="muted">—</span>{% endif %}</td>
 
                     <td>
                         <input
@@ -198,7 +233,7 @@
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="6">
+                    <td colspan="7">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -227,6 +262,8 @@
     );
 
     var provider = "";
+    // Стан картки: "" — всі, "active" — статус 0, "inactive" — решта.
+    var state = "";
 
     function flash(message, ok) {
         var element = document.getElementById("msg");
@@ -290,6 +327,8 @@
         rows.forEach(function (tr) {
             var matches =
                 (!provider || tr.dataset.provider === provider) &&
+                (!state ||
+                    (state === "active") === (tr.dataset.status === "0")) &&
                 (!number ||
                     tr.dataset.search.toLowerCase().includes(number)) &&
                 (!vehicle ||
@@ -324,6 +363,27 @@
             document.querySelectorAll(".pill").forEach(
                 function (pill) {
                     pill.classList.toggle("active", pill === button);
+                }
+            );
+
+            applyFilters();
+        }
+    );
+
+    document.getElementById("state-switch").addEventListener(
+        "click",
+        function (event) {
+            var button = event.target.closest(".seg-btn");
+
+            if (!button) {
+                return;
+            }
+
+            state = button.dataset.s;
+
+            document.querySelectorAll(".seg-btn").forEach(
+                function (seg) {
+                    seg.classList.toggle("active", seg === button);
                 }
             );
 

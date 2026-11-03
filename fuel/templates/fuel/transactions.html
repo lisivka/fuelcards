@@ -1,5 +1,6 @@
 {% extends "fuel/base.html" %}
 {% block content %}
+{% include "fuel/_provider_colors.html" %}
 <form method="get" class="filters">
   <label>З <input type="date" name="from" value="{{ d_from|date:'Y-m-d' }}"></label>
   <label>По <input type="date" name="to" value="{{ d_to|date:'Y-m-d' }}"></label>
@@ -121,7 +122,7 @@
 </tr></thead>
 <tbody>
 {% for t in page %}
-<tr class="{% if t.canceled %}canceled{% endif %} {% if t.kind == 'topup' %}topup{% endif %}">
+<tr class="pv-{{ t.provider }}{% if t.canceled %} canceled{% endif %}{% if t.kind == 'topup' %} topup{% endif %}">
   <td>{{ t.timestamp|date:"d.m.Y H:i:s" }}</td>
   <td class="c-provider">{{ t.get_provider_display }}</td>
   <td class="c-kind">{{ t.get_kind_display }}{% if t.canceled %} (скасовано){% endif %}</td>

@@ -1,0 +1,9 @@
+{% comment %}
+Заливка рядків таблиць кольором провайдера (ProviderConfig.row_color).
+Рядок має клас pv-<код провайдера>; кольори вже перевірені на формат #rrggbb.
+{% endcomment %}
+{% if provider_colors %}
+<style>
+{% for code, color in provider_colors.items %}    tr.pv-{{ code }} > td { background: {{ color }}; }
+{% endfor %}</style>
+{% endif %}

@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_POST
 
 from . import card_service as svc
-from .models import Card, Provider
+from .models import Card, Provider, ProviderConfig
 from .providers.petroline_cards import PetrolineError
 from .providers.ukrnafta_cards import UkrnaftaError
 
@@ -37,6 +37,7 @@ def cards(request):
     return render(request, "fuel/cards.html", {
         "rows": rows,
         "providers": Provider.choices,
+        "provider_colors": ProviderConfig.row_colors(),
         "sync_buttons": [
             {"provider": code, "label": label}
             for code, label in svc.SYNC_LABELS.items() if syncable.get(code)
