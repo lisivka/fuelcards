@@ -7,6 +7,7 @@
 """
 
 import hashlib
+import logging
 import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -18,6 +19,10 @@ from .base import BaseProvider, NormalizedTx, aware, parse_iso, to_dec
 from .petroline_api import PetrolineClient
 
 TX_PATH = "/api/TrkTransactions/v2/list"
+# Пальне, транзакції якого не зберігаємо (довідник Petroline LibFuelType): 17 — «Вода»
+SKIP_FUEL_IDS = {17}
+
+log = logging.getLogger(__name__)
 
 
 def _divisor() -> Decimal:
@@ -57,8 +62,11 @@ class PetrolineProvider(BaseProvider):
 
         client = self.client or PetrolineClient()
         rows = client.post_paged(TX_PATH, make_body)
+        kept = [row for row in rows if row.get("id") is not None and row.get("fuelId") not in SKIP_FUEL_IDS]
+        if len(kept) < len(rows):
+            log.info("Petroline: пропущено транзакцій (вода або без id): %s", len(rows) - len(kept))
         divisor = _divisor()
-        return [self._normalize(row, divisor) for row in rows if row.get("id") is not None]
+        return [self._normalize(row, divisor) for row in kept]
 
     def _normalize(self, row: dict, divisor: Decimal) -> NormalizedTx:
         value = to_dec(row.get("value"))

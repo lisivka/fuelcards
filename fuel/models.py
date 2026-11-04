@@ -39,6 +39,12 @@ class Card(models.Model):
     )
     status_updated_at = models.DateTimeField("Останнє оновлення статусу", null=True, blank=True)
     note = models.CharField("Примітка", max_length=200, blank=True)
+    # Прив'язка картки у провайдера (зараз лише Petroline; заповнюється кнопкою «Оновити карти»).
+    # Тип: 1 Персональна, 3 Техпролив, 5 Автомобільна — визначає, які поля редагуються і куди пишуться.
+    provider_card_type = models.PositiveSmallIntegerField("Тип картки у провайдера", null=True, blank=True)
+    provider_person_id = models.CharField("ID водія у провайдера", max_length=32, blank=True, db_index=True)
+    provider_transport_id = models.CharField("ID транспорту у провайдера", max_length=32, blank=True)
+    provider_label = models.CharField("Водій/авто у провайдера", max_length=200, blank=True)
 
     class Meta:
         verbose_name = "Картка"

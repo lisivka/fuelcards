@@ -144,7 +144,8 @@ def test_cards_use_shared_client():
             "extNumber": "010001",
             "status": 3,
             "typeId": 1,
-            "personName": "Тест",
+            "personId": 501,
+            "personName": "AA0000AA | Тест  Тестович ",
         }
     ]
     client = PetrolineClient(session=fake_session([cards]))
@@ -158,9 +159,24 @@ def test_cards_use_shared_client():
             "external_id": "1",
             "api_status": 3,
             "status": CardStatus.ACTIVE.value,
-            "label": "Тест",
+            "card_type": 1,
+            "person_id": "501",
+            "transport_id": "",
+            "label": "AA0000AA | Тест Тестович",
+            "vehicle": "AA0000AA",
+            "driver_name": "Тест Тестович",
         }
     ]
+
+
+def test_water_transactions_are_skipped():
+    water = {**FIXTURE[0], "id": 9000099, "fuelId": 17, "fuelName": "Вода"}
+    provider, _ = provider_with([[*FIXTURE, water]])
+
+    items = provider.fetch(date(2026, 11, 1), date(2026, 11, 2))
+
+    assert "9000099" not in [it.external_id for it in items]
+    assert len(items) == 3
 
 
 @pytest.mark.django_db
@@ -174,3 +190,91 @@ def test_resync_updates_without_duplicates():
     tx = Transaction.objects.get(provider="petroline", external_id="9000001")
     assert tx.card.number == "0000AAAA01"
     assert tx.liters == Decimal("150.030")
+
+
+KEY_RECORD = {
+    "id": 6001,
+    "idString": "6001",
+    "number": "0000AAAA01",
+    "extNumber": "010001",
+    "personId": 501,
+    "transportId": None,
+    "personName": "Тест",
+    "status": 3,
+    "typeId": 1,
+    "barrelId": None,
+    "groupId": 10,
+    "groupName": "О_Тест",
+    "comment": None,
+    "secondCardMode": 0,
+    "secondCardId": None,
+    "pin": None,
+}
+
+
+def test_update_card_sends_full_key_with_only_status_changed():
+    session = fake_session([[KEY_RECORD]])
+    session.put.return_value = response(
+        {"value": "6001", "status": 200, "returnObject": None, "errors": None}
+    )
+
+    PetrolineCards(client=PetrolineClient(session=session)).update_card(
+        "0000AAAA01", status=CardStatus.BLOCKED
+    )
+
+    find_body = session.post.call_args_list[1].kwargs["json"]
+    assert find_body["where"]["operands"][0] == {
+        "operatorType": 0,
+        "operands": None,
+        "field": "number",
+        "filterType": 1,
+        "value": "0000AAAA01",
+    }
+    put_call = session.put.call_args
+    assert put_call.args[0].endswith("/api/Keys/update")
+    assert put_call.kwargs["json"] == {
+        "id": 6001,
+        "groupId": 10,
+        "personId": 501,
+        "transportId": None,
+        "status": 5,
+        "typeId": 1,
+        "number": "0000AAAA01",
+        "barrelId": None,
+        "extNumber": "010001",
+        "pin": None,
+        "comment": None,
+        "secondCardMode": 0,
+        "secondCardId": None,
+    }
+
+
+def test_update_card_unblock_maps_to_status_3():
+    session = fake_session([[{**KEY_RECORD, "status": 5}]])
+    session.put.return_value = response({"value": "6001", "status": 200, "errors": None})
+
+    PetrolineCards(client=PetrolineClient(session=session)).update_card(
+        "0000AAAA01", status=CardStatus.ACTIVE
+    )
+
+    assert session.put.call_args.kwargs["json"]["status"] == 3
+
+
+def test_update_card_error_in_body_raises():
+    session = fake_session([[KEY_RECORD]])
+    session.put.return_value = response({"value": None, "status": 400, "errors": ["bad"]})
+
+    with pytest.raises(PetrolineError, match="400"):
+        PetrolineCards(client=PetrolineClient(session=session)).update_card(
+            "0000AAAA01", status=CardStatus.BLOCKED
+        )
+
+
+def test_update_card_not_found_does_not_write():
+    session = fake_session([[]])
+
+    with pytest.raises(PetrolineError, match="не знайдено"):
+        PetrolineCards(client=PetrolineClient(session=session)).update_card(
+            "0000AAAA01", status=CardStatus.BLOCKED
+        )
+    session.put.assert_not_called()
