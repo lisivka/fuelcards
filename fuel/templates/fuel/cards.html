@@ -18,7 +18,8 @@
         padding: 6px 12px;
     }
 
-    .pill.active {
+    .pill.active,
+    #f-mismatch.active {
         background: #1f3a5f;
         color: #fff;
     }
@@ -165,6 +166,14 @@
                 {{ b.label }}
             </button>
         {% endfor %}
+
+        {% if mismatch_count %}
+            <button type="button" id="f-mismatch" class="btn" title="Картки Petroline, де наші Авто/ПІБ не збігаються з Petroline">Розбіжності з Petroline: {{ mismatch_count }}</button>
+        {% endif %}
+
+        {% if duplicates_count %}
+            <a class="btn" href="{% url 'card_duplicates' %}" title="Водії Petroline, на яких записано кілька активних карток">Дублі водіїв Petroline: {{ duplicates_count }}</a>
+        {% endif %}
     </div>
 
     <table id="tbl">
@@ -190,8 +199,9 @@
                     data-search="{{ r.number }} {{ r.ext_number }}"
                     data-status="{{ r.status|default_if_none:'' }}"
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
+                    data-mismatch="{% if r.pl_mismatch %}1{% else %}0{% endif %}"
                 >
-                    <td>{{ r.provider_label }}</td>
+                    <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
                     <td>{% if r.ext_number %}{{ r.number }}{% else %}<span class="muted">—</span>{% endif %}</td>
 
@@ -209,6 +219,7 @@
                             value="{{ r.driver_name }}"
                             maxlength="120"
                         >
+                        {% if r.pl_mismatch %}<div class="muted" title="Наші Авто/ПІБ не збігаються з Petroline — рішення на сторінці картки">≠ у Petroline: {{ r.pl_label|default:"(порожньо)" }}</div>{% endif %}
                     </td>
 
                     <td>
@@ -262,6 +273,8 @@
     );
 
     var provider = "";
+    // Лише картки Petroline з розбіжностями Авто/ПІБ
+    var mismatchOnly = false;
     // Стан картки: "" — всі, "active" — статус 0, "inactive" — решта.
     var state = "";
 
@@ -327,6 +340,7 @@
         rows.forEach(function (tr) {
             var matches =
                 (!provider || tr.dataset.provider === provider) &&
+                (!mismatchOnly || tr.dataset.mismatch === "1") &&
                 (!state ||
                     (state === "active") === (tr.dataset.status === "0")) &&
                 (!number ||
@@ -347,6 +361,15 @@
 
         document.getElementById("count").textContent =
             "Показано " + shown + " з " + rows.length;
+    }
+
+    var mismatchBtn = document.getElementById("f-mismatch");
+    if (mismatchBtn) {
+        mismatchBtn.addEventListener("click", function () {
+            mismatchOnly = !mismatchOnly;
+            mismatchBtn.classList.toggle("active", mismatchOnly);
+            applyFilters();
+        });
     }
 
     document.getElementById("pills").addEventListener(

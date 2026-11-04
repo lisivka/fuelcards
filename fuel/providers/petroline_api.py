@@ -77,14 +77,34 @@ class PetrolineClient:
         self._authorized = True
 
     def post(self, path: str, body: dict):
+        return self._request("post", path, body)
+
+    def put(self, path: str, body: dict):
+        return self.write("put", path, body)
+
+    def write(self, method: str, path: str, body: dict | None = None):
+        """Запис у Petroline (create/update/delete). Помилка в тілі відповіді теж падає.
+
+        Формати відповідей різні (перевірено 2026-11): Keys/update і Transports/create —
+        {"value", "status", "returnObject", "errors"}; Persons/create — просто id; Persons/update,
+        Transports/update і delete — порожнє тіло.
+        """
+        payload = self._request(method, path, body, allow_empty=True)
+        if isinstance(payload, dict) and (payload.get("errors") or payload.get("status") not in (None, 200)):
+            raise PetrolineError(f"Petroline {path}: {payload.get('status')} {payload.get('errors')}")
+        return payload
+
+    def _request(self, method: str, path: str, body: dict | None, allow_empty: bool = False):
         if not self._authorized:
             self.login()
-        resp = self.session.post(f"{BASE}{path}", json=body, timeout=TIMEOUT)
+        resp = getattr(self.session, method)(f"{BASE}{path}", json=body, timeout=TIMEOUT)
         if not resp.ok:
             raise PetrolineError(f"Petroline {path}: HTTP {resp.status_code}")
         try:
             return resp.json()
         except ValueError:
+            if allow_empty and not (resp.text or "").strip():
+                return None
             raise PetrolineError(f"Petroline {path}: некоректна відповідь") from None
 
     def post_paged(

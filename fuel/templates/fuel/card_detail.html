@@ -22,6 +22,12 @@
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .changes{margin:0;padding-left:16px}
 .err{color:#a12a22}
+.shared h2{color:#8a5a00}
+.shared table{background:#fff}
+tr.dim td{color:#999}
+.pl-info,.mismatch dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0 0 10px}
+.pl-info dt,.mismatch dt{color:#666}
+.pl-info dd,.mismatch dd{margin:0}
 </style>
 
 <div class="card-head">
@@ -31,6 +37,33 @@
   <span class="badge {% if card.status == st_active %}ok{% elif card.status == st_blocked %}bad{% endif %}">{{ card.get_status_display }}</span>
   {% endif %}
 </div>
+
+{% if caps.shared_active %}
+<section class="panel warn shared" style="margin-bottom:15px">
+  <h2>Водій у Petroline спільний для {{ caps.shared_cards|length|add:1 }} карток</h2>
+  <p>У Petroline Авто і ПІБ — це ім'я водія, а не поле картки. Зміна на цій сторінці застосується до всіх карток цього водія.
+     Щоб розділити, прив'яжіть картки до різних водіїв у кабінеті Petroline і натисніть «Оновити карти Petroline».
+     <a href="{% url 'card_duplicates' %}">Усі дублі водіїв →</a></p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Номер на картці</th><th>Ідентифікатор</th><th>Статус</th><th>Авто (у нас)</th><th>ПІБ (у нас)</th><th>У Petroline</th><th>Остання транзакція</th></tr></thead>
+    <tbody>
+    {% for c in caps.shared_cards %}
+    <tr{% if c.status != st_active %} class="dim"{% endif %}>
+      <td><a href="{% url 'card_detail' c.pk %}">{{ c.display_number }}</a></td>
+      <td>{{ c.number }}</td>
+      <td>{% if c.status is not None %}{{ c.get_status_display }}{% else %}невідомо{% endif %}</td>
+      <td>{{ c.vehicle|default:"—" }}</td>
+      <td>{{ c.driver_name|default:"—" }}</td>
+      <td>{{ c.provider_label|default:"—" }}</td>
+      <td>{{ c.last_tx|date:"d.m.Y H:i"|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
 
 <div class="card-grid">
   <section class="panel info">
@@ -65,24 +98,134 @@
     {% if caps.local_only_warning %}
     <div class="warn">Редагування через API для цього провайдера вимкнене: зміни збережуться лише в нашій базі, у провайдера дані лишаться старі.</div>
     {% endif %}
-    <form method="post" class="edit-form">
+    {% if caps.petroline and caps.info_api %}
+      <dl class="pl-info">
+        <dt>Тип у Petroline</dt>
+        <dd>{% if caps.type_known %}{{ caps.type_name }}{% else %}<span class="err">невідомий — натисніть «Оновити карти Petroline» на сторінці «Карти»</span>{% endif %}</dd>
+        <dt>Водій у Petroline</dt>
+        <dd>{% if card.provider_person_id %}{{ caps.provider_label|default:"(без імені)" }} <span class="dim">· id {{ card.provider_person_id }}</span>{% else %}<span class="dim">не прив'язаний</span>{% endif %}</dd>
+        {% if card.provider_transport_id %}
+        <dt>Транспорт у Petroline</dt>
+        <dd>{{ caps.provider_label|default:"—" }} <span class="dim">· id {{ card.provider_transport_id }}</span></dd>
+        {% endif %}
+        <dt>Дані Petroline на</dt>
+        <dd>{{ card.status_updated_at|date:"d.m.Y H:i"|default:"—" }} <span class="dim">(останнє «Оновити карти Petroline»)</span></dd>
+      </dl>
+
+      {% if caps.label_mismatch %}
+      <div class="warn mismatch">
+        <b>Наші дані не збігаються з Petroline.</b>
+        <dl>
+          <dt>У Petroline</dt><dd><b>{{ caps.provider_label|default:"(порожньо)" }}</b></dd>
+          <dt>У нас</dt><dd><b>{{ caps.expected_label|default:"(порожньо)" }}</b></dd>
+        </dl>
+        <div class="status-row">
+          <form method="post" onsubmit="return confirm('Взяти з Petroline (лише в нашій базі): Авто «{{ caps.from_petroline.0|escapejs }}», ПІБ «{{ caps.from_petroline.1|escapejs }}»?');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="take">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="btn">Взяти з Petroline</button>
+          </form>
+          {% if not caps.mode_none %}
+          <form method="post" onsubmit="return confirm('{{ caps.push_confirm|escapejs }}');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="push">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="btn btn-green">Записати наше в Petroline</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if caps.mode_link %}
+      <div class="warn">
+        Картка {% if caps.type_known %}«{{ caps.type_name }}»{% endif %}{% if not card.provider_person_id %} без водія{% endif %}:
+        Авто і ПІБ кнопкою «Зберегти лише в нас» змінюються тільки в нашій базі.
+        «Зберегти і записати в Petroline» зробить картку «Персональною» на водієві «Авто | ПІБ»:
+        якщо такий водій у Petroline уже є — прив'яже до нього (наприклад, нова картка замість загубленої),
+        якщо немає — створить нового (пальне ДП).
+        {% if caps.same_name_cards %}
+        <br>За нашими даними водій «{{ caps.expected_label }}» уже є, картки:
+        {% for c in caps.same_name_cards %}<a href="{% url 'card_detail' c.pk %}">{{ c.display_number }}</a>{% if c.status != st_active %} ({{ c.get_status_display|lower }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+        — картку буде прив'язано до нього.
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endif %}
+    <form method="post" class="edit-form" id="edit-form"
+      {% if caps.petroline and caps.info_api %}
+        data-mode="{{ caps.edit_mode }}" data-old="{{ caps.provider_label }}"
+        data-shared="{% for c in caps.shared_cards %}{{ c.display_number }}{% if not forloop.last %}, {% endif %}{% endfor %}"
+      {% endif %}>
       {% csrf_token %}
-      <input type="hidden" name="action" value="save">
+      {% if not caps.mode_link %}<input type="hidden" name="action" value="save">{% endif %}
       <input type="hidden" name="back" value="{{ back }}">
+      {% if caps.petroline and caps.info_api %}
+        <label>Авто
+          <input name="vehicle" value="{{ card.vehicle }}" maxlength="120"{% if not caps.edit_vehicle %} disabled{% endif %}>
+          {% if caps.mode_rename and caps.edit_vehicle %}<span class="hint api">змінюється у Petroline: ім'я водія «Авто | ПІБ»</span>
+          {% elif caps.mode_rename %}<span class="hint local">картка «Техпролив»: у Petroline лише ПІБ, поле не редагується</span>
+          {% elif caps.mode_link %}<span class="hint local">лише в нашій базі, доки не натиснете «Зберегти і записати в Petroline»</span>
+          {% else %}<span class="hint local">у Petroline не змінюється, поле не редагується</span>{% endif %}
+        </label>
+        <label>ПІБ водія
+          <input name="driver_name" value="{{ card.driver_name }}" maxlength="120"{% if caps.mode_none %} disabled{% endif %}>
+          {% if caps.mode_rename %}<span class="hint api">змінюється у Petroline: ім'я водія{% if caps.edit_vehicle %} «Авто | ПІБ»{% endif %}</span>
+          {% elif caps.mode_link %}<span class="hint local">лише в нашій базі, доки не натиснете «Зберегти і записати в Petroline»</span>
+          {% else %}<span class="hint local">у Petroline не змінюється, поле не редагується</span>{% endif %}
+        </label>
+      {% else %}
       <label>Авто
         <input name="vehicle" value="{{ card.vehicle }}" maxlength="120">
-        {% if caps.api_edit %}<span class="hint api">змінюється у провайдера (поле VIN)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
+        {% if caps.info_api %}<span class="hint api">змінюється у провайдера (поле VIN)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
       </label>
       <label>ПІБ водія
         <input name="driver_name" value="{{ card.driver_name }}" maxlength="120">
-        {% if caps.api_edit %}<span class="hint api">змінюється у провайдера: прізвище та ім'я (по батькові API не приймає)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
+        {% if caps.info_api %}<span class="hint api">змінюється у провайдера: прізвище та ім'я (по батькові API не приймає)</span>{% else %}<span class="hint local">лише в нашій базі</span>{% endif %}
       </label>
+      {% endif %}
       <label>Примітка
         <input name="note" value="{{ card.note }}" maxlength="200">
         <span class="hint local">лише в нашій базі</span>
       </label>
+      {% if caps.petroline and caps.info_api and caps.mode_link %}
+      <div class="status-row">
+        <button class="btn" name="action" value="save">Зберегти лише в нас</button>
+        <button class="btn btn-green" name="action" value="push">Зберегти і записати в Petroline</button>
+      </div>
+      {% else %}
       <button class="btn btn-green">Зберегти</button>
+      {% endif %}
     </form>
+    {% if caps.petroline and caps.info_api %}
+    <script>
+    (function () {
+      "use strict";
+      // Перед записом у Petroline — підтвердження «було → стане» і картки спільного водія
+      var form = document.getElementById("edit-form");
+      function clean(s) { return (s || "").split(/\s+/).filter(Boolean).join(" "); }
+      form.addEventListener("submit", function (e) {
+        var mode = form.dataset.mode;
+        var push = e.submitter && e.submitter.value === "push";
+        var v = form.vehicle ? clean(form.vehicle.value) : "";
+        var d = form.driver_name ? clean(form.driver_name.value) : "";
+        var label = mode === "driver" ? d : [v, d].filter(Boolean).join(" | ");
+        var msg = "";
+        if (mode === "link" && push) {
+          msg = "Картка стане «Персональною» в Petroline на водієві «" + label + "». " +
+                "Якщо такий водій уже є — картку прив'яжемо до нього, якщо немає — створимо нового (пальне ДП).";
+        } else if ((mode === "rename" || mode === "driver") && label !== clean(form.dataset.old)) {
+          msg = "Petroline: ім'я водія «" + clean(form.dataset.old) + "» → «" + label + "».";
+          if (form.dataset.shared) {
+            msg += "\nВодій спільний: ім'я зміниться також для карток " + form.dataset.shared + ".";
+          }
+        }
+        if (msg && !confirm(msg + "\nПродовжити?")) { e.preventDefault(); }
+      });
+    })();
+    </script>
+    {% endif %}
   </section>
 </div>
 

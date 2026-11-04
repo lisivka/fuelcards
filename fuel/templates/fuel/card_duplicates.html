@@ -1,0 +1,47 @@
+{% extends "fuel/base.html" %}
+{% block content %}
+<style>
+.dup-group{background:#fff;border:1px solid #e3e5e8;border-radius:6px;padding:10px 14px;margin-bottom:14px}
+.dup-group h2{font-size:15px;margin:0 0 8px}
+tr.dim td{color:#999}
+.intro{max-width:900px}
+</style>
+
+<div class="card-head" style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+  <a class="btn" href="{% url 'cards' %}">← Карти</a>
+  <h1 style="font-size:20px;margin:0">Дублі водіїв Petroline{% if groups %}: {{ groups|length }}{% endif %}</h1>
+</div>
+
+<p class="intro dim">
+  У Petroline Авто і ПІБ — це ім'я водія, до якого прив'язана картка. Тут водії, на яких записано дві й більше
+  активні картки: зміна Авто/ПІБ однієї картки зачепить усі картки водія. Щоб розділити — прив'яжіть картки до різних
+  водіїв у кабінеті Petroline, потім натисніть «Оновити карти Petroline» на сторінці «Карти».
+  Заблоковані картки показані сірим і дублем не вважаються.
+</p>
+
+{% for g in groups %}
+<section class="dup-group">
+  <h2>{{ g.label|default:"(без імені)" }} <span class="dim">· водій Petroline id {{ g.person_id }} · карток: {{ g.cards|length }}</span></h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Номер на картці</th><th>Ідентифікатор</th><th>Статус</th><th>Авто (у нас)</th><th>ПІБ (у нас)</th><th>Примітка</th><th>Остання транзакція</th></tr></thead>
+    <tbody>
+    {% for c in g.cards %}
+    <tr{% if c.status != st_active %} class="dim"{% endif %}>
+      <td><a href="{% url 'card_detail' c.pk %}?back=cards">{{ c.display_number }}</a></td>
+      <td>{{ c.number }}</td>
+      <td>{% if c.status is not None %}{{ c.get_status_display }}{% else %}невідомо{% endif %}</td>
+      <td>{{ c.vehicle|default:"—" }}</td>
+      <td>{{ c.driver_name|default:"—" }}</td>
+      <td>{{ c.note|default:"—" }}</td>
+      <td>{{ c.last_tx|date:"d.m.Y H:i"|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% empty %}
+<p>Дублів немає. Якщо картки Petroline ще не оновлювались після оновлення сайту — натисніть «Оновити карти Petroline» на сторінці «Карти».</p>
+{% endfor %}
+{% endblock %}

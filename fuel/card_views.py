@@ -41,6 +41,8 @@ def cards(request):
         "rows": rows,
         "providers": Provider.choices,
         "provider_colors": ProviderConfig.row_colors(),
+        "duplicates_count": len(svc.person_duplicates()),
+        "mismatch_count": sum(1 for r in rows if r["pl_mismatch"]),
         "sync_buttons": [
             {"provider": code, "label": label}
             for code, label in svc.SYNC_LABELS.items() if syncable.get(code)
@@ -83,6 +85,9 @@ def card_info(request, pk):
     data = _body(request)
 
     def run():
+        if card.provider == Provider.PETROLINE.value and svc.info_via_api(card.provider):
+            # Тут немає попередження про спільного водія і полів «Модель / Держномер»
+            raise ValueError("Авто/ПІБ картки Petroline змінюються на сторінці картки")
         svc.update_info(card, str(data.get("vehicle", "")), str(data.get("driver_name", "")), user=request.user)
         return {"card": _json_card(card)}
 
@@ -176,22 +181,39 @@ def card_detail(request, pk):
     )
 
 
+@login_required
+def card_duplicates(request):
+    """Водії Petroline з кількома активними картками: зміна Авто/ПІБ однієї зачепить усі."""
+    return render(
+        request,
+        "fuel/card_duplicates.html",
+        {"groups": svc.person_duplicates(), "st_active": CardStatus.ACTIVE.value},
+    )
+
+
 def _card_detail_post(request, card: Card) -> None:
     """Дії форми сторінки картки; результат показується повідомленням після редиректу."""
     action = request.POST.get("action")
     try:
-        if action == "save":
+        if action in ("save", "push"):
+            # Поля, яких форма не надсилає (вимкнені або окрема кнопка звірки), лишаються як є
             changed = svc.update_info(
                 card,
-                request.POST.get("vehicle", ""),
-                request.POST.get("driver_name", ""),
-                request.POST.get("note", ""),
+                request.POST.get("vehicle", card.vehicle),
+                request.POST.get("driver_name", card.driver_name),
+                request.POST.get("note"),
                 user=request.user,
+                push=action == "push",
             )
             if changed:
                 messages.success(request, "Зміни збережено.")
             else:
                 messages.info(request, "Змін немає.")
+        elif action == "take":
+            if svc.take_from_petroline(card, user=request.user):
+                messages.success(request, "Авто/ПІБ взято з Petroline (змінено лише в нашій базі).")
+            else:
+                messages.info(request, "Змін немає: наші дані вже як у Petroline.")
         elif action == "status":
             try:
                 new_status = int(request.POST.get("status", ""))
