@@ -8,7 +8,7 @@ disable-model-invocation: true
 ## Стан
 !`git branch --show-current`
 !`git status --short`
-!`git diff --stat main...HEAD`
+!`git diff --stat master...HEAD`
 
 ## Кроки
 1. Запусти `python -m ruff check .` і `python -m pytest -q`. Якщо щось червоне — зупинись і покажи, не виправляй мовчки.
@@ -20,4 +20,4 @@ disable-model-invocation: true
    - `PROJECT.md`: якщо змінилась логіка, модель даних або поведінка провайдера;
    - `docs/DECISIONS.md`: якщо ухвалено архітектурне рішення.
 5. Запропонуй повідомлення коміту українською у форматі `ЗАДАЧА-N: що зроблено` і список файлів. Комітити — лише після мого «так».
-6. Нагадай, що далі: злиття в `main` і (за потреби) `/predeploy`.
+6. Нагадай, що далі: злиття в `master` і (за потреби) `/predeploy`.
