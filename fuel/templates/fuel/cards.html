@@ -9,6 +9,24 @@
         margin-bottom: 12px;
     }
 
+    .help {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        line-height: 16px;
+        border-radius: 50%;
+        background: #1f3a5f;
+        color: #fff;
+        font-size: 11px;
+        text-align: center;
+        cursor: help;
+        margin-left: 4px;
+    }
+
+    .lim {
+        white-space: nowrap;
+    }
+
     .pill {
         border: 1px solid #1f3a5f;
         background: #fff;
@@ -161,7 +179,9 @@
                 type="button"
                 class="sync-btn"
                 data-provider="{{ b.provider }}"
-                data-label="{{ b.label }}"
+                data-kind="{{ b.kind }}"
+                data-label="{{ b.label }}"{% if b.kind == "limits" %}
+                title="Ліміти всіх активних карток: окремий запит на кожну картку, це може тривати хвилину"{% endif %}
             >
                 {{ b.label }}
             </button>
@@ -182,6 +202,7 @@
                 <th>Постачальник</th>
                 <th>Номер картки</th>
                 <th>Ідентифікатор</th>
+                <th>Ліміти <span class="help" title="{{ limits_help }}">?</span></th>
                 <th>Авто</th>
                 <th>ПІБ водія</th>
                 <th>Статус</th>
@@ -204,6 +225,8 @@
                     <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
                     <td>{% if r.ext_number %}{{ r.number }}{% else %}<span class="muted">—</span>{% endif %}</td>
+
+                    <td class="lim" title="{% if r.limits_updated %}Ліміти оновлено {{ r.limits_updated|date:'d.m.Y H:i' }}{% else %}Ліміти ще не читались{% endif %}">{{ r.limits_short|default:"—" }}</td>
 
                     <td>
                         <input
@@ -244,7 +267,7 @@
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="7">
+                    <td colspan="8">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -519,6 +542,8 @@
                     result.card.status,
                     result.card.status_updated
                 );
+                // Після розблокування ліміти картки перечитуються з API
+                tr.querySelector(".lim").textContent = result.card.limits_short || "—";
 
                 flash(
                     "Змінюємо статус картки " + number + ": " +
@@ -589,13 +614,10 @@
             button.textContent = "Оновлення…";
 
             post("/cards/sync/", {
-                provider: button.dataset.provider
+                provider: button.dataset.provider,
+                kind: button.dataset.kind
             }).then(function (result) {
-                flash(
-                    label + ": нових " + result.created +
-                    ", оновлено " + result.updated,
-                    true
-                );
+                flash(label + ": " + result.message, !result.failed);
 
                 setTimeout(function () {
                     location.reload();

@@ -1,4 +1,5 @@
 import json
+import logging
 
 import requests
 from django.contrib import messages
@@ -10,9 +11,12 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import card_service as svc
+from . import limits
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
 from .providers.petroline_cards import PetrolineError
 from .providers.ukrnafta_cards import UkrnaftaError
+
+log = logging.getLogger(__name__)
 
 
 def _body(request) -> dict:
@@ -43,9 +47,13 @@ def cards(request):
         "provider_colors": ProviderConfig.row_colors(),
         "duplicates_count": len(svc.person_duplicates()),
         "mismatch_count": sum(1 for r in rows if r["pl_mismatch"]),
+        "limits_help": limits.HELP_TEXT,
         "sync_buttons": [
-            {"provider": code, "label": label}
+            {"provider": code, "label": label, "kind": "cards"}
             for code, label in svc.SYNC_LABELS.items() if syncable.get(code)
+        ] + [
+            {"provider": code, "label": label, "kind": "limits"}
+            for code, label in svc.LIMIT_SYNC_LABELS.items() if syncable.get(code)
         ],
     })
 
@@ -124,12 +132,20 @@ def card_delete(request, pk):
 @login_required
 @require_POST
 def cards_sync(request):
-    """Оновлення карток із API провайдера; без параметра це UkrNafta (як раніше)."""
-    provider = _body(request).get("provider") or Provider.UKRNAFTA.value
+    """Оновлення карток із API провайдера; без параметра це UkrNafta (як раніше).
+    kind="limits" — окремо ліміти активних карток (довго: запит на кожну картку).
+    """
+    data = _body(request)
+    provider = data.get("provider") or Provider.UKRNAFTA.value
 
     def run():
-        created, updated = svc.sync_cards(provider, user=request.user)
-        return {"created": created, "updated": updated}
+        if data.get("kind") == "limits":
+            done, failed = svc.sync_limits(provider, user=request.user)
+            message = f"оновлено {done}" + (f", з помилкою {failed} (див. лог сервера)" if failed else "")
+            return {"updated": done, "failed": failed, "message": message}
+        created, updated, warning = svc.sync_cards(provider, user=request.user)
+        message = f"нових {created}, оновлено {updated}" + (f"; {warning}" if warning else "")
+        return {"created": created, "updated": updated, "failed": bool(warning), "message": message}
 
     return _safe(run)
 
@@ -177,6 +193,10 @@ def card_detail(request, pk):
             "back_url": reverse(back),
             "st_active": CardStatus.ACTIVE.value,
             "st_blocked": CardStatus.BLOCKED.value,
+            "limits_help": limits.HELP_TEXT,
+            "limits_lines": limits.describe(card.fuel_limits),
+            "limits_note": svc.limits_note(card),
+            "can_refresh_limits": card.provider in svc.LIMIT_PROVIDERS and svc.sync_map().get(card.provider),
         },
     )
 
@@ -214,6 +234,9 @@ def _card_detail_post(request, card: Card) -> None:
                 messages.success(request, "Авто/ПІБ взято з Petroline (змінено лише в нашій базі).")
             else:
                 messages.info(request, "Змін немає: наші дані вже як у Petroline.")
+        elif action == "limits":
+            svc.refresh_limits(card, strict=True)
+            messages.success(request, f"Ліміти оновлено: {card.limits_short or 'лімітів на пальне немає'}.")
         elif action == "status":
             try:
                 new_status = int(request.POST.get("status", ""))
@@ -228,3 +251,7 @@ def _card_detail_post(request, card: Card) -> None:
         messages.error(request, str(exc))
     except (UkrnaftaError, PetrolineError, requests.RequestException) as exc:
         messages.error(request, f"Помилка провайдера, зміни не збережено: {exc}")
+    except Exception:
+        # Несподіваний формат відповіді провайдера тощо — повідомлення замість сторінки 500
+        log.exception("Сторінка картки %s: дія %s", card.pk, action)
+        messages.error(request, "Несподівана помилка, зміни не збережено. Подробиці — в лозі сервера.")

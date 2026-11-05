@@ -18,7 +18,9 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         provider = opts["provider"]
         try:
-            created, updated = sync_cards(provider, source=AuditLog.SOURCE_COMMAND)
+            created, updated, warning = sync_cards(provider, source=AuditLog.SOURCE_COMMAND)
         except ValueError as exc:
             raise CommandError(f"{provider}: {exc}") from exc
         self.stdout.write(self.style.SUCCESS(f"{provider}: нових {created}, оновлено {updated}"))
+        if warning:
+            self.stderr.write(self.style.WARNING(f"{provider}: {warning}"))

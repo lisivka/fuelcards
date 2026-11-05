@@ -45,6 +45,10 @@ class Card(models.Model):
     provider_person_id = models.CharField("ID водія у провайдера", max_length=32, blank=True, db_index=True)
     provider_transport_id = models.CharField("ID транспорту у провайдера", max_length=32, blank=True)
     provider_label = models.CharField("Водій/авто у провайдера", max_length=200, blank=True)
+    # Знімок лімітів на пальне з останнього оновлення карток (fuel/limits.py): UkrNafta — ліміти картки,
+    # Petroline — ліміти її водія. Порожній список — лімітів немає або ще не читали (див. limits_updated_at)
+    fuel_limits = models.JSONField("Ліміти на пальне", default=list, blank=True)
+    limits_updated_at = models.DateTimeField("Ліміти оновлено", null=True, blank=True)
 
     class Meta:
         verbose_name = "Картка"
@@ -61,6 +65,13 @@ class Card(models.Model):
     def display_number(self):
         """Номер, який надрукований на картці (якщо відомий), інакше ключовий номер."""
         return self.ext_number or self.number
+
+    @property
+    def limits_short(self) -> str:
+        """Скорочення лімітів на пальне: «Д500 М500»."""
+        from .limits import short
+
+        return short(self.fuel_limits)
 
 
 # Кольори заливки рядків за замовчуванням; адміністратор змінює їх у «Конфігурації провайдера».
@@ -214,6 +225,7 @@ class AuditLog(models.Model):
         CARD_DELETE = "card_delete", "Видалення картки"
         TX_SYNC = "tx_sync", "Синхронізація транзакцій"
         CARDS_SYNC = "cards_sync", "Оновлення карток"
+        LIMITS_SYNC = "limits_sync", "Оновлення лімітів"
 
     # Звідки запущено синхронізацію (details["source"])
     SOURCE_BUTTON = "button"
@@ -232,7 +244,7 @@ class AuditLog(models.Model):
         Action.CARD_STATUS,
         Action.CARD_DELETE,
     )
-    SYNC_ACTIONS = (Action.TX_SYNC, Action.CARDS_SYNC)
+    SYNC_ACTIONS = (Action.TX_SYNC, Action.CARDS_SYNC, Action.LIMITS_SYNC)
 
     # Підписи полів для читабельного опису змін
     FIELD_LABELS = {
@@ -297,6 +309,8 @@ class AuditLog(models.Model):
             lines.append(f"Період: {_fmt_date(d['date_from'])} .. {_fmt_date(d['date_to'])}")
         if "created" in d or "updated" in d:
             lines.append(f"Нових: {d.get('created', 0)}, оновлено: {d.get('updated', 0)}")
+        if d.get("failed"):
+            lines.append(f"З помилкою: {d['failed']}")
         if d.get("chunks", 0) > 1:
             lines.append(f"Частин: {d.get('chunks_done', d['chunks'])} з {d['chunks']}")
         if d.get("capped"):
