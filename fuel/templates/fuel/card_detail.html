@@ -28,6 +28,8 @@ tr.dim td{color:#999}
 .pl-info,.mismatch dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0 0 10px}
 .pl-info dt,.mismatch dt{color:#666}
 .pl-info dd,.mismatch dd{margin:0}
+.help{display:inline-block;width:16px;height:16px;line-height:16px;border-radius:50%;background:#1f3a5f;color:#fff;font-size:11px;text-align:center;cursor:help}
+.limits{margin:0;padding-left:16px}
 </style>
 
 <div class="card-head">
@@ -75,6 +77,22 @@ tr.dim td{color:#999}
       <dt>ID у провайдера</dt><dd>{{ card.external_id|default:"—" }}</dd>
       <dt>Статус</dt><dd>{% if card.status is not None %}{{ card.get_status_display }}{% else %}<span class="dim">невідомо</span>{% endif %}</dd>
       <dt>Статус оновлено</dt><dd>{{ card.status_updated_at|date:"d.m.Y H:i"|default:"—" }}</dd>
+      <dt>Ліміти <span class="help" title="{{ limits_help }}">?</span></dt>
+      <dd>
+        {% if limits_lines %}
+          <b>{{ card.limits_short }}</b>
+          <ul class="limits">{% for line in limits_lines %}<li>{{ line }}</li>{% endfor %}</ul>
+        {% elif card.limits_updated_at %}немає лімітів на пальне{% else %}<span class="dim">ще не читались</span>{% endif %}
+        <div class="dim">{% if card.limits_updated_at %}оновлено {{ card.limits_updated_at|date:"d.m.Y H:i" }}{% endif %}{% if limits_note %} · {{ limits_note }}{% endif %}</div>
+        {% if can_refresh_limits %}
+        <form method="post" style="margin-top:6px">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="limits">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button class="btn" title="Прочитати ліміти лише цієї картки з API провайдера (у провайдера нічого не змінюється)">Оновити ліміти</button>
+        </form>
+        {% endif %}
+      </dd>
     </dl>
 
     <h2 style="margin-top:16px">Блокування</h2>

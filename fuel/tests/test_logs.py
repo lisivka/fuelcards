@@ -148,7 +148,7 @@ def test_cards_sync_button_records_result(monkeypatch, logged_client):
         reverse("cards_sync"), {"provider": "ukrnafta"}, content_type="application/json"
     )
 
-    assert response.json() == {"created": 3, "updated": 4}
+    assert response.json() == {"created": 3, "updated": 4, "failed": False, "message": "нових 3, оновлено 4"}
     entry = AuditLog.objects.get()
     assert entry.action == AuditLog.Action.CARDS_SYNC and entry.username == "manager"
     assert (entry.details["created"], entry.details["updated"]) == (3, 4)

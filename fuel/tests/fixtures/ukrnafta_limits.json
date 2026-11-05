@@ -1,0 +1,175 @@
+{
+  "_note": "Знеособлені відповіді UkrNafta public-api (перевірка 2026-11-04, scripts/probes/limits_read.py). Номери карток вигадані.",
+  "limit_types": {
+    "types": [
+      {
+        "id": 1,
+        "remark": "Гривні, місяць"
+      },
+      {
+        "id": 2,
+        "remark": "Гривні, доба"
+      },
+      {
+        "id": 3,
+        "remark": "Літри, місяць"
+      },
+      {
+        "id": 4,
+        "remark": "Літри, доба"
+      },
+      {
+        "id": 5,
+        "remark": "Гривні, тиждень"
+      },
+      {
+        "id": 6,
+        "remark": "Літри, тиждень"
+      },
+      {
+        "id": 7,
+        "remark": "Гривні, одноразово"
+      },
+      {
+        "id": 8,
+        "remark": "Літри, одноразово"
+      },
+      {
+        "id": 9,
+        "remark": "Гривні, ліміт до списання"
+      },
+      {
+        "id": 10,
+        "remark": "Літри, ліміт до списання"
+      }
+    ],
+    "errorCode": 0,
+    "errorDescription": "Ok"
+  },
+  "card_limits": {
+    "7921000000000001": {
+      "limits": [
+        {
+          "id": 808774,
+          "limitId": 808774,
+          "limitType": 4,
+          "limitAmount": 100,
+          "limitBalance": 0,
+          "attachedPurses": [
+            {
+              "purseId": 7
+            },
+            {
+              "purseId": 13
+            }
+          ]
+        }
+      ],
+      "errorCode": 0,
+      "errorDescription": "Ok"
+    },
+    "7921000000000002": {
+      "limits": [
+        {
+          "id": 808808,
+          "limitId": 808808,
+          "limitType": 4,
+          "limitAmount": 60,
+          "limitBalance": 0,
+          "attachedPurses": [
+            {
+              "purseId": 7
+            },
+            {
+              "purseId": 13
+            }
+          ]
+        },
+        {
+          "id": 832295,
+          "limitId": 832295,
+          "limitType": 3,
+          "limitAmount": 60,
+          "limitBalance": 0,
+          "attachedPurses": [
+            {
+              "purseId": 5
+            },
+            {
+              "purseId": 9
+            }
+          ]
+        }
+      ],
+      "errorCode": 0,
+      "errorDescription": "Ok"
+    },
+    "7921000000000003": {
+      "limits": [],
+      "errorCode": 0,
+      "errorDescription": "Ok"
+    }
+  },
+  "purses": {
+    "purses": [
+      {
+        "purseId": 5,
+        "purseTypeId": 0,
+        "remark": "А-95",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": true
+      },
+      {
+        "purseId": 7,
+        "purseTypeId": 0,
+        "remark": "ДП",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": true
+      },
+      {
+        "purseId": 8,
+        "purseTypeId": 1,
+        "remark": "ДП (літровий)",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": false
+      },
+      {
+        "purseId": 9,
+        "purseTypeId": 0,
+        "remark": "А-95 ENERGY",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": true
+      },
+      {
+        "purseId": 11,
+        "purseTypeId": 0,
+        "remark": "Газ",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": true
+      },
+      {
+        "purseId": 13,
+        "purseTypeId": 0,
+        "remark": "ДП ENERGY",
+        "active": true,
+        "isFuel": true,
+        "useBasePurse": true
+      },
+      {
+        "purseId": 20,
+        "purseTypeId": 0,
+        "remark": "Мийка",
+        "active": true,
+        "isFuel": false,
+        "useBasePurse": true
+      }
+    ],
+    "errorCode": 0,
+    "errorDescription": "Ok"
+  }
+}

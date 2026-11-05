@@ -16,7 +16,7 @@ disable-model-invocation: true
 3. **Нові змінні оточення:** порівняй `.env_example` з попереднім релізом; що треба додати в `.env` на сервері.
 4. **Нові залежності:** зміни в `requirements.txt`.
 5. **Перевірки, які я маю пройти вручну:**
-   - на гілці `main`, `git status` чистий;
+   - на гілці `master`, `git status` чистий;
    - `python -m pytest -q` і `python -m ruff check .` — зелені;
    - на сервері **бекап бази перед деплоєм**: `sudo -u fuelcards cp /opt/fuelcards/db.sqlite3 /opt/fuelcards/backups/db_$(date +%F_%H%M).sqlite3`
    - деплой: `sudo bash /opt/fuelcards/deploy/deploy.sh`;

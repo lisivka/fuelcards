@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Count, Max
 from django.utils import timezone
 
+from . import limits as lim
 from .audit import record_sync, username_of
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
 from .providers import petroline_cards as pl
@@ -57,11 +58,16 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "pl_type": pl.TYPE_NAMES.get(card.provider_card_type, "") if card.provider == Provider.PETROLINE.value else "",
         "pl_mismatch": petroline_mismatch(card),
         "pl_label": card.provider_label,
+        "limits_short": card.limits_short,
+        "limits_updated": card.limits_updated_at,
     }
 
 
 def sync_ukrnafta_cards() -> tuple[int, int]:
-    """Підтягує статуси карток UkrNafta. Порожні Авто/ПІБ заповнюються з API, заповнені не чіпаємо."""
+    """Підтягує статуси карток UkrNafta. Порожні Авто/ПІБ заповнюються з API, заповнені не чіпаємо.
+
+    Ліміти тут не читаються (окремий запит на кожну картку — довго): див. `sync_ukrnafta_limits`.
+    """
     created = updated = 0
     now = timezone.now()
     for row in UkrnaftaCards().list_cards():
@@ -88,15 +94,20 @@ def sync_ukrnafta_cards() -> tuple[int, int]:
     return created, updated
 
 
-def sync_petroline_cards() -> tuple[int, int]:
+def sync_petroline_cards() -> tuple[int, int, str]:
     """Підтягує картки Petroline: номер на картці, id, статус, тип і прив'язку (водій/транспорт).
 
     Ключ картки: Ідентифікатор (`number`). Авто/ПІБ заповнюються з Petroline лише тоді, коли в нас
     обидва порожні («Авто | ПІБ» розділяється по «|», ім'я без «|» — в Авто); інакше не чіпаємо:
     розбіжність видно на сторінці картки, рішення за користувачем. Як картка записана в Petroline
     зараз — у `provider_label`.
+
+    Ліміти водіїв читаються тут же одним запитом. Якщо не прочитались — картки все одно оновлюються,
+    у карток лишається попередній знімок лімітів, а третій елемент результату — текст попередження.
     """
-    rows = PetrolineCards().list_cards()
+    client = PetrolineCards()
+    rows = client.list_cards()
+    limits_by_person, limits_error = _petroline_limits_by_person(client)
     unknown = Counter(row["api_status"] for row in rows if row["status"] is None)
     if unknown:
         log.warning("Petroline: невідомі коди статусу карток: %s", dict(unknown))
@@ -118,11 +129,129 @@ def sync_petroline_cards() -> tuple[int, int]:
             card.external_id = row["external_id"][:32]
             card.status = row["status"]
             card.status_updated_at = now
+            if limits_by_person is not None:
+                card.fuel_limits = limits_by_person.get(card.provider_person_id, [])
+                card.limits_updated_at = now
             card.save()
             created += was_created
             updated += not was_created
     log.info("Petroline: картки оновлено, нових %s, оновлено %s", created, updated)
-    return created, updated
+    return created, updated, (f"ліміти не оновлено: {limits_error}" if limits_error else "")
+
+
+def _petroline_limits_by_person(client: PetrolineCards) -> tuple[dict[str, list[dict]] | None, str]:
+    """(ліміти на пальне водіїв Petroline, текст помилки). Порожній список від API — це «лімітів немає»,
+    а не збій: знятий у Petroline ліміт має зникнути і в нас. Збій запиту — (None, помилка), знімок лишається.
+    """
+    try:
+        return lim.petroline_by_person(client.person_limits()), ""
+    except Exception as exc:
+        log.warning("Petroline: ліміти водіїв не прочитано: %s", exc)
+        return None, str(exc)[:300]
+
+
+# Провайдери, у яких ліміти читаються з API (UPG лімітів карток не надає)
+LIMIT_PROVIDERS = {Provider.UKRNAFTA.value, Provider.PETROLINE.value}
+
+
+def load_limits(card: Card, *, client: UkrnaftaCards | None = None, purses: dict | None = None) -> list[dict]:
+    """Ліміти на пальне однієї картки з API провайдера; помилка API — виняток."""
+    if card.provider == Provider.UKRNAFTA.value:
+        client = client or UkrnaftaCards()
+        purses = purses if purses is not None else client.fuel_purses()
+        return lim.ukrnafta_limits(client.list_limits(card.number), purses)
+    if card.provider == Provider.PETROLINE.value:
+        if not card.provider_person_id:
+            return []
+        return lim.petroline_by_person(PetrolineCards().person_limits()).get(card.provider_person_id, [])
+    raise ValueError("Цей провайдер не надає лімітів карток через API")
+
+
+def _store_limits(card: Card, limits: list[dict]) -> None:
+    card.fuel_limits = limits
+    card.limits_updated_at = timezone.now()
+    card.save(update_fields=["fuel_limits", "limits_updated_at"])
+
+
+def refresh_limits(card: Card, *, strict: bool = False) -> bool:
+    """Оновлює знімок лімітів однієї картки (кнопка на сторінці картки, після розблокування).
+
+    strict=False — помилка лише логується і лишається попередній знімок; strict=True — виняток далі.
+    """
+    try:
+        limits = load_limits(card)
+    except Exception as exc:
+        if strict:
+            raise
+        log.warning("Ліміти картки %s:%s не прочитано: %s", card.provider, card.number, exc)
+        return False
+    _store_limits(card, limits)
+    return True
+
+
+def sync_ukrnafta_limits() -> tuple[int, int]:
+    """Ліміти всіх активних карток UkrNafta (запит на кожну). Повертає (оновлено, з помилкою).
+
+    Довідник гаманців не прочитався — виняток (нічого не змінено); помилка окремої картки лише
+    логується, у неї лишається попередній знімок.
+    """
+    client = UkrnaftaCards()
+    purses = client.fuel_purses()
+    done = failed = 0
+    cards = Card.objects.filter(provider=Provider.UKRNAFTA.value, status=CardStatus.ACTIVE)
+    for card in cards:
+        try:
+            limits = load_limits(card, client=client, purses=purses)
+        except Exception as exc:
+            log.warning("UkrNafta: ліміти картки %s не прочитано: %s", card.number, exc)
+            failed += 1
+            continue
+        _store_limits(card, limits)
+        done += 1
+    log.info("UkrNafta: ліміти оновлено для %s карток, помилок %s", done, failed)
+    return done, failed
+
+
+# Окреме оновлення лімітів усіх карток (кнопки на «Картах»). Petroline — разом з «Оновити карти»: один запит
+LIMIT_SYNCERS = {Provider.UKRNAFTA.value: sync_ukrnafta_limits}
+LIMIT_SYNC_LABELS = {Provider.UKRNAFTA.value: "Оновити ліміти UkrNafta"}
+
+
+def sync_limits(provider: str, *, user=None, source: str = AuditLog.SOURCE_BUTTON) -> tuple[int, int]:
+    """Оновлення лімітів активних карток провайдера; результат — у журнал аудиту."""
+    if provider not in LIMIT_SYNCERS:
+        raise ValueError("Для цього провайдера окреме оновлення лімітів не підтримується")
+    if not sync_map().get(provider):
+        raise ValueError("Провайдер неактивний")
+    try:
+        done, failed = LIMIT_SYNCERS[provider]()
+    except Exception as exc:
+        record_sync(AuditLog.Action.LIMITS_SYNC, provider, user=user, source=source, error=str(exc))
+        raise
+    # Частковий збій — запис з помилкою, щоб його було видно у фільтрі «Лише помилки» на «Логах»
+    record_sync(
+        AuditLog.Action.LIMITS_SYNC,
+        provider,
+        user=user,
+        source=source,
+        updated=done,
+        failed=failed,
+        error=f"не прочитано ліміти {failed} карток (подробиці в лозі сервера)" if failed else "",
+    )
+    return done, failed
+
+
+def limits_note(card: Card) -> str:
+    """Чому ліміти картки можуть бути неактуальні або відсутні (підпис на сторінці картки)."""
+    if card.provider == Provider.UPG.value:
+        return "UPG не надає лімітів карток через API"
+    if card.provider == Provider.UKRNAFTA.value and card.status != CardStatus.ACTIVE:
+        return "«Оновити ліміти UkrNafta» оновлює лише активні картки; після розблокування ліміти оновляться"
+    if card.provider == Provider.PETROLINE.value and not card.provider_person_id:
+        return "у Petroline ліміти ставляться на водія, а картка не прив'язана до водія"
+    if card.provider == Provider.PETROLINE.value:
+        return "ліміт водія Petroline — спільний для всіх його карток"
+    return ""
 
 
 # Читання карток із API провайдера (кнопки «Оновити …» на сторінці «Карти»)
@@ -142,21 +271,32 @@ def sync_map() -> dict:
     return {code: bool(cfg.is_active and code in SYNCERS) for code, cfg in configs.items()}
 
 
-def sync_cards(provider: str, *, user=None, source: str = AuditLog.SOURCE_BUTTON) -> tuple[int, int]:
-    """Оновлення карток обраного провайдера; повертає (нових, оновлено). Результат — у журнал аудиту."""
+def sync_cards(provider: str, *, user=None, source: str = AuditLog.SOURCE_BUTTON) -> tuple[int, int, str]:
+    """Оновлення карток обраного провайдера; повертає (нових, оновлено, попередження). Результат — у журнал аудиту.
+
+    Попередження (зараз: ліміти Petroline не прочитались) не скасовує оновлення карток, але запис аудиту
+    позначається помилкою з цим текстом.
+    """
     if provider not in SYNCERS:
         raise ValueError("Для цього провайдера оновлення карток не підтримується")
     if not sync_map().get(provider):
         raise ValueError("Провайдер неактивний")
     try:
-        created, updated = SYNCERS[provider]()
+        created, updated, *rest = SYNCERS[provider]()
     except Exception as exc:
         record_sync(AuditLog.Action.CARDS_SYNC, provider, user=user, source=source, error=str(exc))
         raise
+    warning = rest[0] if rest else ""
     record_sync(
-        AuditLog.Action.CARDS_SYNC, provider, user=user, source=source, created=created, updated=updated
+        AuditLog.Action.CARDS_SYNC,
+        provider,
+        user=user,
+        source=source,
+        created=created,
+        updated=updated,
+        error=warning,
     )
-    return created, updated
+    return created, updated, warning
 
 
 def record_audit(
@@ -226,6 +366,9 @@ def set_status(card: Card, new_status: int, *, user=None) -> None:
         card.status_updated_at = timezone.now()
         card.save(update_fields=["status", "status_updated_at"])
         record_audit(AuditLog.Action.CARD_STATUS, card, user, changes=changes, via_api=True)
+    if new_status == CardStatus.ACTIVE:
+        # Ліміти заблокованих карток не оновлюються з «Оновити …» — після розблокування читаємо їх одразу
+        refresh_limits(card)
 
 
 def update_info(

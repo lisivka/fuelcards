@@ -151,6 +151,10 @@ class PetrolineCards:
     def list_persons(self) -> list[dict]:
         return self.client.post_paged("/api/Persons/list", _all_by_id)
 
+    def person_limits(self) -> list[dict]:
+        """Усі ліміти водіїв (PersonLimit/list); фільтр пального і діючих — у fuel/limits.py."""
+        return self.client.post_paged("/api/PersonLimit/list", _all_by_id)
+
     def list_cards(self) -> list[dict]:
         records = self.client.post_paged("/api/Keys/list", _all_by_id)
         return [row for row in map(self._normalize, records) if row]

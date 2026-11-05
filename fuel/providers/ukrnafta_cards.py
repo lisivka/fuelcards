@@ -41,6 +41,22 @@ class UkrnaftaCards:
         )
         return self._check(resp).get("cards") or []
 
+    def list_limits(self, card_id: str) -> list[dict]:
+        """Ліміти картки: [{limitId, limitType, limitAmount, limitBalance, attachedPurses}]."""
+        resp = requests.get(
+            f"{BASE}/cards/{card_id}/limits", params={"lang": "uk"}, headers=self._headers(), timeout=60
+        )
+        return self._check(resp).get("limits") or []
+
+    def fuel_purses(self) -> dict[int, str]:
+        """Довідник гаманців: {purseId: назва} лише для пального (isFuel)."""
+        resp = requests.get(f"{BASE}/common/purses", params={"lang": "uk"}, headers=self._headers(), timeout=60)
+        return {
+            p["purseId"]: str(p.get("remark") or p["purseId"])
+            for p in self._check(resp).get("purses") or []
+            if p.get("isFuel") and p.get("purseId") is not None
+        }
+
     def update_card(self, card_number: str, *, status=None, vin=None, last_name=None, first_name=None) -> None:
         """Надсилає лише передані поля."""
         payload = {}
