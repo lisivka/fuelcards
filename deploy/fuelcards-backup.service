@@ -1,0 +1,14 @@
+[Unit]
+Description=Fuelcards: щоденний бекап бази SQLite
+# Мережеву шару змонтовано з x-systemd.automount — вона підключиться при першому зверненні.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fuelcards
+Group=fuelcards
+WorkingDirectory=/opt/fuelcards
+ExecStart=/bin/bash /opt/fuelcards/deploy/backup.sh auto
+NoNewPrivileges=true
+PrivateTmp=true

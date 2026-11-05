@@ -1,0 +1,14 @@
+# Налаштування бекапу бази. На сервері: /etc/default/fuelcards-backup
+# (sudo cp /opt/fuelcards/deploy/fuelcards-backup.default /etc/default/fuelcards-backup).
+# Читає deploy/backup.sh; після зміни нічого перезапускати не треба.
+
+# Скільки днів зберігати локальні копії (backups/manual, deploy, auto).
+BACKUP_KEEP_DAYS=15
+
+# Тека для копії щоденного бекапу за межами сервера — точка монтування мережевої шари,
+# наприклад /mnt/public/fuelcards (= \\public.ua\Public\fuelcards). Порожньо — не копіювати.
+# Теку скрипт не створює: якщо шара не змонтована, бекап позначиться помилкою.
+BACKUP_REMOTE_DIR=
+
+# Скільки днів зберігати копії на мережевій шарі.
+BACKUP_REMOTE_KEEP_DAYS=15

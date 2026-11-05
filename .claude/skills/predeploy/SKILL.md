@@ -18,8 +18,12 @@ disable-model-invocation: true
 5. **Перевірки, які я маю пройти вручну:**
    - на гілці `master`, `git status` чистий;
    - `python -m pytest -q` і `python -m ruff check .` — зелені;
-   - на сервері **бекап бази перед деплоєм**: `sudo -u fuelcards cp /opt/fuelcards/db.sqlite3 /opt/fuelcards/backups/db_$(date +%F_%H%M).sqlite3`
+   - **бекап бази** робить сам `deploy.sh` першим кроком (`backups/deploy/`); якщо бекап не вдався, деплой зупиняється. Перевір: якщо на сервері ще немає `deploy/backup.sh` (коміт на сервері старший за ЗАДАЧУ-13), зроби бекап вручну перед деплоєм (у `backups/deploy/`, звідки його бере «Відновлення з бекапу»):
+     `sudo -u fuelcards mkdir -p -m 700 /opt/fuelcards/backups/deploy`
+     `sudo -u fuelcards /opt/fuelcards/venv/bin/python -c "import sqlite3,datetime; s=sqlite3.connect('/opt/fuelcards/db.sqlite3'); d=sqlite3.connect('/opt/fuelcards/backups/deploy/db_deploy_'+datetime.datetime.now().strftime('%F_%H%M')+'.sqlite3'); s.backup(d); d.close(); s.close()"`
+     (якщо `mkdir` пише «Permission denied» — `backups/` належить root: `sudo chown fuelcards:fuelcards /opt/fuelcards/backups`)
+     (екстрений ручний бекап у будь-який момент: `sudo bash /opt/fuelcards/deploy/backup.sh`);
    - деплой: `sudo bash /opt/fuelcards/deploy/deploy.sh`;
    - після деплою: відкрити сайт, сторінки «Транзакції» і «Карти», `journalctl -u fuelcards -n 50`.
-6. **План відкату:** `git checkout <попередній-коміт>` → відкат міграцій (якщо були) → відновлення бекапу бази → `systemctl restart fuelcards`.
+6. **План відкату:** зупинити сервіс → `git checkout <попередній-коміт>` → відновити базу з `backups/deploy/` (кроки — `deploy/SERVER_SETUP.md`, «Відновлення з бекапу»; міграції окремо не відкочувати — копія зроблена до них) → запустити сервіс. Без відновлення бази (якщо дані після деплою треба зберегти) — замість нього `migrate fuel <попередня>` до `git checkout`.
 7. Наприкінці: перенеси «Не випущено» в `CHANGELOG.md` під нову версію з датою (запропонуй правку, застосуй з мого дозволу).
