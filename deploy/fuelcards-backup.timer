@@ -1,0 +1,10 @@
+[Unit]
+Description=Fuelcards: бекап бази щодня о 01:00 (Київ)
+
+[Timer]
+OnCalendar=*-*-* 01:00:00 Europe/Kyiv
+# Якщо о 01:00 сервер був вимкнений — бекап одразу після ввімкнення.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

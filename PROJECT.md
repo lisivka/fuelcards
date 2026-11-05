@@ -6,15 +6,16 @@
 
 - Користувачів 3-5 працівників, лише локальна мережа.
 - Сервер: Ubuntu, адреса `http://192.168.1.173/` (HTTP, без HTTPS).
-- Хостинг: gunicorn + WhiteNoise під systemd, без nginx (порт 80, `AmbientCapabilities=CAP_NET_BIND_SERVICE`).
+- Хостинг: waitress + WhiteNoise під systemd (`deploy/fuelcards.service`), без nginx, порт 8000.
 - Синхронізація: службова команда `manage.py sync_fuel` — `--days N` (за замовчуванням 2), `--config-days` (глибина `ProviderConfig.sync_days` кожного провайдера), `--config-period` (період `sync_date_from`..`sync_date_to`), `--provider` для вибору. Те саме з адмінки: дії «Синхронізувати вибраних за N днів» / «за період з/по» в «Конфігураціях провайдерів». Неактивні провайдери пропускаються. Період понад 30 днів ділиться на частини по 30 днів з паузою 2 с (`services.CHUNK_DAYS`, `CHUNK_PAUSE_SECONDS`), максимум 366 днів; помилка частини зупиняє лише цього провайдера.
 - Синхронізація: є ручна кнопка «Синхронізувати зараз» на сторінці «Транзакції», яка синхронізує від останньої дати в базі даних. 
-- Оновлення: `git pull`, `pip install -r`, `migrate`, `collectstatic`, `systemctl restart`.
+- Оновлення (`deploy/deploy.sh`): бекап бази, `git pull`, `pip install -r`, `migrate`, `collectstatic`, `systemctl restart`.
+- Бекапи (`deploy/backup.sh`, SQLite backup API + `integrity_check`): `backups/manual|deploy|auto/`; `deploy` — на початку кожного деплою, `auto` — таймер `fuelcards-backup.timer` щодня о 01:00 з копією на мережеву шару (`BACKUP_REMOTE_DIR` у `/etc/default/fuelcards-backup`) і видаленням копій старших 15 днів. Інструкції й відновлення — `deploy/SERVER_SETUP.md`.
 - Репозиторій: https://github.com/lisivka/fuelcards (публічний; секрети лише в `.env`, у git не потрапляють).
 
 ## 3. Стек
 
-Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), requests, python-dotenv, gunicorn, whitenoise. Часова зона Europe/Kyiv, мова інтерфейсу uk.
+Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), requests, python-dotenv, waitress, whitenoise. Часова зона Europe/Kyiv, мова інтерфейсу uk.
 
 ## 4. Структура коду (наявна)
 

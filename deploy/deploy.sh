@@ -14,6 +14,8 @@ fi
 run() { sudo -u "$APP_USER" "$@"; }
 
 cd "$APP_DIR"
+# Бекап бази перед оновленням; якщо він не вдався — деплой не продовжується (set -e).
+bash "$APP_DIR/deploy/backup.sh" deploy
 run git pull --ff-only
 run "$APP_DIR/venv/bin/pip" install -r requirements.txt
 run "$APP_DIR/venv/bin/python" manage.py migrate --noinput
