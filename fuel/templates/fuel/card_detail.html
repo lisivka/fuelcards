@@ -207,6 +207,13 @@ tr.dim td{color:#999}
         <input name="note" value="{{ card.note }}" maxlength="200">
         <span class="hint local">лише в нашій базі</span>
       </label>
+      <label>Тип авто
+        <select name="vehicle_type">
+          <option value="">— не вказано —</option>
+          {% for vt in vehicle_types %}<option value="{{ vt.pk }}"{% if vt.pk == card.vehicle_type_id %} selected{% endif %}>{{ vt.name }}</option>{% endfor %}
+        </select>
+        <span class="hint local">лише в нашій базі{% if user.is_staff %} · <a href="{% url 'admin:fuel_vehicletype_changelist' %}">довідник типів</a>{% endif %}</span>
+      </label>
       {% if caps.petroline and caps.info_api and caps.mode_link %}
       <div class="status-row">
         <button class="btn" name="action" value="save">Зберегти лише в нас</button>

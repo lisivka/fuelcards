@@ -72,6 +72,12 @@
         box-sizing: border-box;
     }
 
+    td input[readonly] {
+        background: transparent;
+        border-color: transparent;
+        cursor: default;
+    }
+
     .badge {
         display: inline-block;
         padding: 2px 8px;
@@ -172,6 +178,12 @@
             placeholder="ПІБ…"
         >
 
+        <select id="f-vtype" title="Тип авто">
+            <option value="">Усі типи авто</option>
+            <option value="none">Без типу</option>
+            {% for vt in vehicle_types %}<option value="{{ vt.pk }}">{{ vt.name }}</option>{% endfor %}
+        </select>
+
         <span id="count" class="muted"></span>
 
         {% for b in sync_buttons %}
@@ -204,6 +216,7 @@
                 <th>Ідентифікатор</th>
                 <th>Ліміти <span class="help" title="{{ limits_help }}">?</span></th>
                 <th>Авто</th>
+                <th>Тип авто{% if user.is_staff %} <a class="help" href="{% url 'admin:fuel_vehicletype_changelist' %}" title="Довідник типів авто (адмінка)">+</a>{% endif %}</th>
                 <th>ПІБ водія</th>
                 <th>Статус</th>
                 <th>Дії</th>
@@ -221,6 +234,7 @@
                     data-status="{{ r.status|default_if_none:'' }}"
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
                     data-mismatch="{% if r.pl_mismatch %}1{% else %}0{% endif %}"
+                    data-vtype="{{ r.vehicle_type_id|default_if_none:'' }}"
                 >
                     <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
@@ -232,15 +246,26 @@
                         <input
                             class="v"
                             value="{{ r.vehicle }}"
-                            maxlength="120"
+                            maxlength="120"{% if not r.inline_info %}
+                            readonly
+                            title="Змінюється на сторінці картки"{% endif %}
                         >
+                    </td>
+
+                    <td>
+                        <select class="vt" title="Тип авто: зберігається одразу, лише в нашій базі">
+                            <option value="">—</option>
+                            {% for vt in vehicle_types %}<option value="{{ vt.pk }}"{% if vt.pk == r.vehicle_type_id %} selected{% endif %}>{{ vt.name }}</option>{% endfor %}
+                        </select>
                     </td>
 
                     <td>
                         <input
                             class="d"
                             value="{{ r.driver_name }}"
-                            maxlength="120"
+                            maxlength="120"{% if not r.inline_info %}
+                            readonly
+                            title="Змінюється на сторінці картки"{% endif %}
                         >
                         {% if r.pl_mismatch %}<div class="muted" title="Наші Авто/ПІБ не збігаються з Petroline — рішення на сторінці картки">≠ у Petroline: {{ r.pl_label|default:"(порожньо)" }}</div>{% endif %}
                     </td>
@@ -260,14 +285,18 @@
                     </td>
 
                     <td class="act">
+                        {% if r.inline_info %}
                         <button type="button" class="save-btn">
                             Зберегти Авто/ПІБ
                         </button>
+                        {% else %}
+                        <a href="{% url 'card_detail' r.id %}?back=cards" title="Авто/ПІБ картки Petroline змінюються на сторінці картки">Змінити на сторінці картки</a>
+                        {% endif %}
                     </td>
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="8">
+                    <td colspan="9">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -358,6 +387,9 @@
         var driver = document.getElementById("f-driver")
             .value.trim().toLowerCase();
 
+        // "" — усі, "none" — без типу, інакше id типу
+        var vtype = document.getElementById("f-vtype").value;
+
         var shown = 0;
 
         rows.forEach(function (tr) {
@@ -373,7 +405,9 @@
                         .includes(vehicle)) &&
                 (!driver ||
                     tr.querySelector(".d").value.toLowerCase()
-                        .includes(driver));
+                        .includes(driver)) &&
+                (!vtype ||
+                    tr.dataset.vtype === (vtype === "none" ? "" : vtype));
 
             tr.style.display = matches ? "" : "none";
 
@@ -437,7 +471,7 @@
         }
     );
 
-    ["f-number", "f-vehicle", "f-driver"].forEach(
+    ["f-number", "f-vehicle", "f-driver", "f-vtype"].forEach(
         function (id) {
             document.getElementById(id).addEventListener(
                 "input",
@@ -445,6 +479,41 @@
             );
         }
     );
+
+    // Тип авто в рядку: зберігається одразу після вибору.
+
+    tbody.addEventListener("change", function (event) {
+        var select = event.target.closest("select.vt");
+
+        if (!select) {
+            return;
+        }
+
+        var tr = select.closest("tr[data-id]");
+        var previous = tr.dataset.vtype;
+
+        select.disabled = true;
+
+        post("/cards/" + tr.dataset.id + "/vehicle-type/", {
+            vehicle_type: select.value
+        }).then(function (result) {
+            var id = result.card.vehicle_type_id;
+            tr.dataset.vtype = id === null ? "" : String(id);
+            select.value = tr.dataset.vtype;
+
+            flash(
+                "Тип авто картки " + tr.dataset.number + ": " +
+                (result.card.vehicle_type || "не вказано"),
+                true
+            );
+            applyFilters();
+        }).catch(function (error) {
+            select.value = previous;
+            flash(error.message, false);
+        }).then(function () {
+            select.disabled = false;
+        });
+    });
 
     // Відображення статусу картки.
 
@@ -588,7 +657,8 @@
                 provider: form.provider.value,
                 number: form.number.value,
                 vehicle: form.vehicle.value,
-                driver_name: form.driver_name.value
+                driver_name: form.driver_name.value,
+                vehicle_type: form.vehicle_type ? form.vehicle_type.value : ""
             }).then(function () {
                 location.reload();
             }).catch(function (error) {

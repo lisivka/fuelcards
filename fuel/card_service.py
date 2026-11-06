@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from . import limits as lim
 from .audit import record_sync, username_of
-from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
+from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, VehicleType
 from .providers import petroline_cards as pl
 from .providers.petroline_cards import PetrolineCards
 from .providers.ukrnafta_cards import UkrnaftaCards
@@ -51,9 +51,13 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "vehicle": card.vehicle,
         "driver_name": card.driver_name,
         "status": card.status,
+        "vehicle_type_id": card.vehicle_type_id,
+        "vehicle_type": card.vehicle_type.name if card.vehicle_type_id else "",
         "status_label": card.get_status_display() if card.status is not None else "—",
         "status_updated": card.status_updated_at,
         "editable": editable.get(card.provider, False),
+        # Авто/ПІБ у таблиці «Карти»: у Petroline з API вони змінюються лише на сторінці картки
+        "inline_info": not (card.provider == Provider.PETROLINE.value and info_via_api(card.provider, editable)),
         # Petroline: тип картки і чи розходяться наші Авто/ПІБ з Petroline (за останнім оновленням)
         "pl_type": pl.TYPE_NAMES.get(card.provider_card_type, "") if card.provider == Provider.PETROLINE.value else "",
         "pl_mismatch": petroline_mismatch(card),
@@ -489,6 +493,30 @@ def person_duplicates() -> list[dict]:
 
 
 _REFRESH_PETROLINE = "натисніть «Оновити карти Petroline» на сторінці «Карти»"
+
+
+def parse_vehicle_type(value) -> VehicleType | None:
+    """Тип авто з форми/JSON: порожнє значення — без типу; невідомий id — помилка."""
+    if value in (None, ""):
+        return None
+    try:
+        return VehicleType.objects.get(pk=int(value))
+    except (TypeError, ValueError, VehicleType.DoesNotExist):
+        raise ValueError("Невідомий тип авто") from None
+
+
+def set_vehicle_type(card: Card, vehicle_type: VehicleType | None, *, user=None) -> bool:
+    """Тип авто — лише в нашій базі, у провайдера не пишеться. Повертає False, якщо змін немає."""
+    new_id = vehicle_type.pk if vehicle_type else None
+    if card.vehicle_type_id == new_id:
+        return False
+    old_name = card.vehicle_type.name if card.vehicle_type_id else None
+    changes = {"vehicle_type": [old_name, vehicle_type.name if vehicle_type else None]}
+    with transaction.atomic():
+        card.vehicle_type = vehicle_type
+        card.save(update_fields=["vehicle_type"])
+        record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
+    return True
 
 
 def _petroline_new_values(card: Card, mode: str, vehicle: str, driver_name: str) -> dict:

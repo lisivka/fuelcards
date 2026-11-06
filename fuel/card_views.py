@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from . import card_service as svc
 from . import limits
-from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig
+from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, VehicleType
 from .providers.petroline_cards import PetrolineError
 from .providers.ukrnafta_cards import UkrnaftaError
 
@@ -40,9 +40,10 @@ def _safe(fn):
 def cards(request):
     editable = svc.editable_map()
     syncable = svc.sync_map()
-    rows = [svc.serialize(c, editable) for c in Card.objects.all()]
+    rows = [svc.serialize(c, editable) for c in Card.objects.select_related("vehicle_type")]
     return render(request, "fuel/cards.html", {
         "rows": rows,
+        "vehicle_types": VehicleType.objects.all(),
         "providers": Provider.choices,
         "provider_colors": ProviderConfig.row_colors(),
         "duplicates_count": len(svc.person_duplicates()),
@@ -72,14 +73,18 @@ def card_create(request):
             raise ValueError("Вкажіть номер картки")
         if Card.objects.filter(provider=provider, number=number).exists():
             raise ValueError("Така картка вже є")
+        vehicle_type = svc.parse_vehicle_type(data.get("vehicle_type"))
         with transaction.atomic():
             card = Card.objects.create(
                 provider=provider,
                 number=number,
                 vehicle=str(data.get("vehicle", "")).strip()[:120],
                 driver_name=" ".join(str(data.get("driver_name", "")).split())[:120],
+                vehicle_type=vehicle_type,
             )
             changes = {f: [None, getattr(card, f)] for f in ("number", "vehicle", "driver_name") if getattr(card, f)}
+            if vehicle_type:
+                changes["vehicle_type"] = [None, vehicle_type.name]
             svc.record_audit(AuditLog.Action.CARD_CREATE, card, request.user, changes=changes)
         return {"id": card.pk}
 
@@ -98,6 +103,20 @@ def card_info(request, pk):
             raise ValueError("Авто/ПІБ картки Petroline змінюються на сторінці картки")
         svc.update_info(card, str(data.get("vehicle", "")), str(data.get("driver_name", "")), user=request.user)
         return {"card": _json_card(card)}
+
+    return _safe(run)
+
+
+@login_required
+@require_POST
+def card_vehicle_type(request, pk):
+    """Тип авто зі списку «Карти»: лише в нашій базі, зберігається одразу після вибору."""
+    card = get_object_or_404(Card.objects.select_related("vehicle_type"), pk=pk)
+    data = _body(request)
+
+    def run():
+        changed = svc.set_vehicle_type(card, svc.parse_vehicle_type(data.get("vehicle_type")), user=request.user)
+        return {"card": _json_card(card), "changed": changed}
 
     return _safe(run)
 
@@ -182,6 +201,7 @@ def card_detail(request, pk):
         "fuel/card_detail.html",
         {
             "card": card,
+            "vehicle_types": VehicleType.objects.all(),
             "caps": svc.capabilities(card),
             "provider_colors": ProviderConfig.row_colors(),
             "transactions": transactions,
@@ -216,6 +236,12 @@ def _card_detail_post(request, card: Card) -> None:
     action = request.POST.get("action")
     try:
         if action in ("save", "push"):
+            # Тип авто перевіряємо до запису в API, а зберігаємо після: невдача API не лишає половину змін
+            vehicle_type = (
+                svc.parse_vehicle_type(request.POST["vehicle_type"])
+                if "vehicle_type" in request.POST
+                else card.vehicle_type
+            )
             # Поля, яких форма не надсилає (вимкнені або окрема кнопка звірки), лишаються як є
             changed = svc.update_info(
                 card,
@@ -225,6 +251,7 @@ def _card_detail_post(request, card: Card) -> None:
                 user=request.user,
                 push=action == "push",
             )
+            changed = svc.set_vehicle_type(card, vehicle_type, user=request.user) or changed
             if changed:
                 messages.success(request, "Зміни збережено.")
             else:
