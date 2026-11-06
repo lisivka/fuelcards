@@ -22,6 +22,27 @@ class CardStatus(models.IntegerChoices):
     REPLACED = 3, "Замінена"
 
 
+class VehicleType(models.Model):
+    """Тип авто (міксер, тягач тощо). Довідник веде адміністратор в адмінці; лише в нашій базі."""
+
+    name = models.CharField("Назва", max_length=60, unique=True)
+
+    class Meta:
+        verbose_name = "Тип авто"
+        verbose_name_plural = "Типи авто"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        super().clean()
+        self.name = " ".join((self.name or "").split())
+        duplicate = VehicleType.objects.filter(name__iexact=self.name).exclude(pk=self.pk)
+        if self.name and duplicate.exists():
+            raise ValidationError({"name": "Такий тип авто вже є."})
+
+
 class Card(models.Model):
     provider = models.CharField("Постачальник", max_length=20, choices=Provider.choices)
     # Ключ зв'язку з транзакціями. Для Petroline це «Ідентифікатор», а не номер на картці
@@ -39,6 +60,15 @@ class Card(models.Model):
     )
     status_updated_at = models.DateTimeField("Останнє оновлення статусу", null=True, blank=True)
     note = models.CharField("Примітка", max_length=200, blank=True)
+    # Лише в нашій базі: у провайдерів не пишеться і синхронізацією не змінюється
+    vehicle_type = models.ForeignKey(
+        VehicleType,
+        verbose_name="Тип авто",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="cards",
+    )
     # Прив'язка картки у провайдера (зараз лише Petroline; заповнюється кнопкою «Оновити карти»).
     # Тип: 1 Персональна, 3 Техпролив, 5 Автомобільна — визначає, які поля редагуються і куди пишуться.
     provider_card_type = models.PositiveSmallIntegerField("Тип картки у провайдера", null=True, blank=True)
@@ -253,6 +283,7 @@ class AuditLog(models.Model):
         "driver_name": "ПІБ водія",
         "note": "Примітка",
         "status": "Статус",
+        "vehicle_type": "Тип авто",
     }
 
     created_at = models.DateTimeField("Коли", auto_now_add=True, db_index=True)

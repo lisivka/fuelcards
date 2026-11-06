@@ -13,12 +13,12 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from .models import AuditLog, CardStatus, Provider, ProviderConfig, Transaction
+from .models import AuditLog, CardStatus, Provider, ProviderConfig, Transaction, VehicleType
 from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
 _FILTER_KEYS = {
-    "from", "to", "period", "provider", "status", "card", "driver", "vehicle", "q", "page", "per_page"
+    "from", "to", "period", "provider", "status", "vtype", "card", "driver", "vehicle", "q", "page", "per_page"
 }
 
 STATUS_UNKNOWN = "unknown"
@@ -33,6 +33,7 @@ COLUMN_CHOICES = [
     ("vraw", "Авто (пост.)"),
     ("driver", "Водій"),
     ("vehicle", "Авто"),
+    ("vtype", "Тип авто"),
     ("status", "Статус"),
     ("fuel", "Пальне"),
     ("liters", "Літри"),
@@ -48,6 +49,9 @@ PERIOD_PRESETS = [
     ("7d", "7 днів"),
     ("30d", "30 днів"),
 ]
+# Фільтр «Тип авто»: "" — усі, VTYPE_NONE — картки без типу (і транзакції без картки), інакше id типу
+VTYPE_NONE = "none"
+
 PER_PAGE_CHOICES = [25, 50, 100, 200, 500]
 DEFAULT_PER_PAGE = 100
 
@@ -64,6 +68,30 @@ def preset_dates(code: str, today: date) -> tuple[date, date] | None:
     if code == "30d":
         return today - timedelta(days=29), today
     return None
+
+
+def parse_vtype(value: str | None) -> str:
+    """Значення фільтра «Тип авто»: "", VTYPE_NONE або id наявного типу; решта — як «усі»."""
+    value = (value or "").strip()
+    if value == VTYPE_NONE:
+        return value
+    if value.isdigit() and VehicleType.objects.filter(pk=int(value)).exists():
+        return value
+    return ""
+
+
+def vtype_q(vtype: str, card_field: str = "card") -> Q:
+    """Умова фільтра «Тип авто» для моделі з посиланням на картку (`card_field`)."""
+    if vtype == VTYPE_NONE:
+        return Q(**{f"{card_field}__vehicle_type__isnull": True})
+    if vtype:
+        return Q(**{f"{card_field}__vehicle_type_id": int(vtype)})
+    return Q()
+
+
+def vtype_choices() -> list[tuple[str, str]]:
+    types = VehicleType.objects.values_list("pk", "name")
+    return [(VTYPE_NONE, "Без типу")] + [(str(pk), name) for pk, name in types]
 
 
 def parse_per_page(value: str | None) -> int:
@@ -90,14 +118,16 @@ def transactions(request):
     per_page = parse_per_page(g.get("per_page"))
     provider = g.get("provider", "")
     status = g.get("status", "")
+    vtype = parse_vtype(g.get("vtype"))
     card = g.get("card", "").strip()
     driver = g.get("driver", "").strip()
     vehicle = g.get("vehicle", "").strip()
     q = g.get("q", "").strip()
 
-    qs = Transaction.objects.select_related("card").filter(
+    qs = Transaction.objects.select_related("card", "card__vehicle_type").filter(
         timestamp__date__gte=d_from, timestamp__date__lte=d_to
     )
+    qs = qs.filter(vtype_q(vtype))
     if provider:
         qs = qs.filter(provider=provider)
     if status == STATUS_UNKNOWN:
@@ -128,7 +158,8 @@ def transactions(request):
     page_range = list(paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=3))
     period_params = {"period": period} if period else {"from": d_from.isoformat(), "to": d_to.isoformat()}
     filter_params = {
-        "provider": provider, "status": status, "card": card, "driver": driver, "vehicle": vehicle, "q": q,
+        "provider": provider, "status": status, "vtype": vtype, "card": card, "driver": driver,
+        "vehicle": vehicle, "q": q,
     }
     query = urlencode(
         {**period_params, **{k: v for k, v in filter_params.items() if v}, "per_page": per_page}
@@ -137,9 +168,9 @@ def transactions(request):
         "page": page, "page_range": page_range, "ellipsis": paginator.ELLIPSIS,
         "totals": totals, "d_from": d_from, "d_to": d_to, "period": period,
         "period_presets": PERIOD_PRESETS, "per_page": per_page, "per_page_choices": PER_PAGE_CHOICES,
-        "provider": provider, "status": status, "card": card, "driver": driver,
+        "provider": provider, "status": status, "vtype": vtype, "card": card, "driver": driver,
         "vehicle": vehicle, "q": q, "query": query,
-        "providers": Provider.choices, "statuses": STATUS_CHOICES,
+        "providers": Provider.choices, "statuses": STATUS_CHOICES, "vtypes": vtype_choices(),
         "column_choices": COLUMN_CHOICES,
         "provider_colors": ProviderConfig.row_colors(),
         "st_active": CardStatus.ACTIVE.value, "st_blocked": CardStatus.BLOCKED.value,
@@ -190,7 +221,7 @@ def _export_csv(qs, d_from, d_to):
     w = csv.writer(resp, delimiter=";")
     w.writerow([
         "Дата", "Постачальник", "Тип", "Картка", "Ідентифікатор", "Авто (пост.)", "Водій", "Авто",
-        "Статус", "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
+        "Тип авто", "Статус", "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
     ])
     for t in qs.order_by("timestamp"):
         card = t.card
@@ -198,7 +229,8 @@ def _export_csv(qs, d_from, d_to):
         w.writerow([
             timezone.localtime(t.timestamp).strftime("%d.%m.%Y %H:%M:%S"), t.get_provider_display(),
             t.get_kind_display(), card.display_number if card else t.card_ref, t.card_ref, t.vehicle_raw,
-            card.driver_name if card else "", card.vehicle if card else "", status,
+            card.driver_name if card else "", card.vehicle if card else "",
+            card.vehicle_type.name if card and card.vehicle_type_id else "", status,
             t.fuel,
             t.liters if t.liters is not None else "", t.price if t.price is not None else "",
             t.amount if t.amount is not None else "", t.station, "так" if t.canceled else "",
@@ -221,8 +253,12 @@ def logs(request):
     kind = g.get("kind", "")
     provider = g.get("provider", "")
     errors_only = g.get("errors") == "1"
+    vtype = parse_vtype(g.get("vtype"))
 
     qs = AuditLog.objects.select_related("card")
+    if vtype:
+        # Записи без картки (синхронізації, видалені картки) не мають типу авто й під фільтр не потрапляють
+        qs = qs.filter(card__isnull=False).filter(vtype_q(vtype))
     if kind == "cards":
         qs = qs.filter(action__in=AuditLog.CARD_ACTIONS)
     elif kind == "sync":
@@ -238,7 +274,7 @@ def logs(request):
 
     paginator = Paginator(qs, LOGS_PER_PAGE)
     page = paginator.get_page(g.get("page"))
-    params = {"kind": kind, "provider": provider, "errors": "1" if errors_only else ""}
+    params = {"kind": kind, "provider": provider, "vtype": vtype, "errors": "1" if errors_only else ""}
     return render(
         request,
         "fuel/logs.html",
@@ -250,6 +286,8 @@ def logs(request):
             "query": urlencode({"kind": kind, **{k: v for k, v in params.items() if v and k != "kind"}}),
             "kind": kind,
             "provider": provider,
+            "vtype": vtype,
+            "vtypes": vtype_choices(),
             "errors_only": errors_only,
             "kinds": LOG_KINDS,
             "providers": Provider.choices,

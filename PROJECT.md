@@ -20,7 +20,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 ## 4. Структура коду (наявна)
 
 - `config/` налаштування Django; `fuel/` єдиний додаток.
-- `fuel/models.py`: `Provider` (TextChoices), `CardStatus`, `ProviderConfig`, `Card`, `Transaction`.
+- `fuel/models.py`: `Provider` (TextChoices), `CardStatus`, `ProviderConfig`, `VehicleType`, `Card`, `Transaction`, `AuditLog`.
 - `fuel/providers/`: адаптери `petroline.py`, `upg.py`, `ukrnafta.py` (транзакції) та `ukrnafta_cards.py`, `petroline_cards.py` (картки), спільне в `base.py` (`NormalizedTx`).
 - `fuel/services.py`: upsert транзакцій, `run_sync` (збій одного провайдера не зупиняє інших, неактивні пропускаються).
 - `fuel/card_service.py`, `fuel/card_views.py`: логіка й JSON-ендпоінти сторінки «Карти»; сторінка картки `card_detail` (`/cards/<id>/`, поля й блокування залежно від провайдера — `card_service.capabilities`), журнал аудиту.
@@ -30,7 +30,8 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 ## 5. Модель даних
 
 - **Transaction**: provider, external_id (унікальна пара), kind (fuel/topup), card (FK, може бути null), card_ref, vehicle_raw, timestamp, fuel, liters, price, amount, station, canceled, raw JSON, cards.id_vehicle (FK, може бути null), cards.id_driver (FK, може бути null).
-- **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note, fuel_limits (JSON-знімок лімітів на пальне: `[{period, money, amount, fuels}]`, див. «Ліміти» нижче), limits_updated_at.
+- **Card**: provider+number (унікальна пара; `number` — ключ зв'язку з `Transaction.card_ref`, для Petroline це «Ідентифікатор»), ext_number (номер на картці; `display_number` = ext_number або number), external_id (ID у провайдера), vehicle (Авто), driver_name (ПІБ), status (0 Активна, 1 Заблокована, 2 Неактивна, 3 Замінена; null якщо невідомо), status_updated_at, note, vehicle_type (FK на `VehicleType`, null — не вказано), fuel_limits (JSON-знімок лімітів на пальне: `[{period, money, amount, fuels}]`, див. «Ліміти» нижче), limits_updated_at.
+- **VehicleType** (тип авто: міксер, тягач тощо): name (унікальна без урахування регістру й зайвих пробілів). Довідник веде лише адміністратор в адмінці. Тип живе лише в нашій базі: у провайдерів не пишеться, синхронізація карток його не змінює. Видалення типу робить `Card.vehicle_type` порожнім (`SET_NULL`), і кожна така картка отримує запис у журналі аудиту.
 - **ProviderConfig**: code, is_active (чи брати в синхронізацію), edit_enabled (режим редагування карток через API; типово лише UkrNafta), row_color, sync_days (глибина синхронізації, 1..366, типово 2), sync_date_from / sync_date_to (період для синхронізації «з/по»; обидві або жодна, «по» не в майбутньому).
 - **AuditLog**: created_at, user (+ знімок username), action (card_create / card_info / card_status / card_delete / tx_sync / cards_sync / limits_sync), details JSON для синхронізацій (source: button / admin_days / admin_period / command, date_from, date_to, chunks, chunks_done, created, updated, failed, capped), card (FK, null після видалення) + card_label (знімок), provider, changes JSON `{поле: [було, стало]}`, via_api, success, error. Пишеться в `card_service` (`record_audit`); невдалий запис в API теж логується з success=False, база при цьому не змінюється. Синхронізації пишуться через `fuel/audit.py` (`record_sync`): один запис на провайдера за запуск, неактивні не пишуться. Перегляд — сторінка «Логи» (`/logs/`, усім авторизованим) і адмінка (лише читання). Очищення старих записів поки немає.
 - Синхронізація ідемпотентна: повторне завантаження оновлює записи (важливо для скасувань UkrNafta).
@@ -60,6 +61,7 @@ Python 3, Django 5.x, SQLite (режим WAL, `transaction_mode=IMMEDIATE`), req
 - Сторінка «Транзакції»: фільтри (дата, провайдер, пошук), підсумки, пагінація, експорт CSV (`;`, UTF-8 BOM).
 - Сторінка «Карти»: миттєвий фільтр за провайдером, окремі пошуки за номером/авто/ПІБ (на клієнті), окремі кнопки «Заблокувати/Розблокувати» та «Зберегти Авто/ПІБ», додавання і локальне видалення, кнопка «Оновити статуси UkrNafta».
 - Для провайдерів з увімкненим режимом редагування зміни спершу йдуть в API і пишуться в базу лише після успіху. Для решти Авто/ПІБ зберігаються тільки локально, статус не змінюється.
+- Тип авто: призначається картці зі списку «Карти» (вибір у рядку, зберігається одразу) або на сторінці картки, зміна йде в журнал аудиту (`card_info`, поле `vehicle_type`). Фільтр «Тип авто» на «Транзакціях» (`vtype`: id типу або `none`; «Без типу» включає й транзакції без картки), «Картах» (на клієнті) і «Логах» (лише записи про картки, синхронізації з фільтром не показуються). Колонка «Тип авто» на «Транзакціях» (ховається) і в CSV.
 - Права: усі авторизовані користувачі можуть редагувати картки. Пункт «Адмінка» бачать лише `is_staff`.
 
 
