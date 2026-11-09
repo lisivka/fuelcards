@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from . import limits as lim
 from .audit import record_sync, username_of
+from .managers import user_label
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, VehicleType
 from .providers import petroline_cards as pl
 from .providers.petroline_cards import PetrolineCards
@@ -53,6 +54,8 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "status": card.status,
         "vehicle_type_id": card.vehicle_type_id,
         "vehicle_type": card.vehicle_type.name if card.vehicle_type_id else "",
+        "manager_id": card.manager_id,
+        "manager": card.manager_name,
         "status_label": card.get_status_display() if card.status is not None else "—",
         "status_updated": card.status_updated_at,
         "editable": editable.get(card.provider, False),
@@ -515,6 +518,19 @@ def set_vehicle_type(card: Card, vehicle_type: VehicleType | None, *, user=None)
     with transaction.atomic():
         card.vehicle_type = vehicle_type
         card.save(update_fields=["vehicle_type"])
+        record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
+    return True
+
+
+def set_manager(card: Card, manager, *, user=None) -> bool:
+    """Відповідальний менеджер — лише в нашій базі. Повертає False, якщо змін немає."""
+    new_id = manager.pk if manager else None
+    if card.manager_id == new_id:
+        return False
+    changes = {"manager": [card.manager_name or None, user_label(manager) or None]}
+    with transaction.atomic():
+        card.manager = manager
+        card.save(update_fields=["manager"])
         record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
     return True
 

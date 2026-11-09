@@ -69,6 +69,15 @@ class Card(models.Model):
         on_delete=models.SET_NULL,
         related_name="cards",
     )
+    # Відповідальний менеджер — користувач системи з групи «Менеджери» (fuel/managers.py); лише в нашій базі
+    manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="Менеджер",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="managed_cards",
+    )
     # Прив'язка картки у провайдера (зараз лише Petroline; заповнюється кнопкою «Оновити карти»).
     # Тип: 1 Персональна, 3 Техпролив, 5 Автомобільна — визначає, які поля редагуються і куди пишуться.
     provider_card_type = models.PositiveSmallIntegerField("Тип картки у провайдера", null=True, blank=True)
@@ -95,6 +104,13 @@ class Card(models.Model):
     def display_number(self):
         """Номер, який надрукований на картці (якщо відомий), інакше ключовий номер."""
         return self.ext_number or self.number
+
+    @property
+    def manager_name(self) -> str:
+        """ПІБ відповідального менеджера (або логін, якщо ПІБ не заповнене); порожньо — не призначено."""
+        from .managers import user_label
+
+        return user_label(self.manager) if self.manager_id else ""
 
     @property
     def limits_short(self) -> str:
@@ -284,6 +300,7 @@ class AuditLog(models.Model):
         "note": "Примітка",
         "status": "Статус",
         "vehicle_type": "Тип авто",
+        "manager": "Менеджер",
     }
 
     created_at = models.DateTimeField("Коли", auto_now_add=True, db_index=True)

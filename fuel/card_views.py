@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import card_service as svc
-from . import limits
+from . import limits, managers
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, VehicleType
 from .providers.petroline_cards import PetrolineError
 from .providers.ukrnafta_cards import UkrnaftaError
@@ -40,10 +40,15 @@ def _safe(fn):
 def cards(request):
     editable = svc.editable_map()
     syncable = svc.sync_map()
-    rows = [svc.serialize(c, editable) for c in Card.objects.select_related("vehicle_type")]
+    rows = [svc.serialize(c, editable) for c in Card.objects.select_related("vehicle_type", "manager")]
+    options = _manager_options()
     return render(request, "fuel/cards.html", {
         "rows": rows,
         "vehicle_types": VehicleType.objects.all(),
+        "manager_options": options,
+        "manager_option_ids": {pk for pk, _ in options},
+        "manager_filters": managers.filter_choices(),
+        "me_id": request.user.pk,
         "providers": Provider.choices,
         "provider_colors": ProviderConfig.row_colors(),
         "duplicates_count": len(svc.person_duplicates()),
@@ -74,6 +79,7 @@ def card_create(request):
         if Card.objects.filter(provider=provider, number=number).exists():
             raise ValueError("Така картка вже є")
         vehicle_type = svc.parse_vehicle_type(data.get("vehicle_type"))
+        manager = managers.parse_manager(data.get("manager"))
         with transaction.atomic():
             card = Card.objects.create(
                 provider=provider,
@@ -81,10 +87,13 @@ def card_create(request):
                 vehicle=str(data.get("vehicle", "")).strip()[:120],
                 driver_name=" ".join(str(data.get("driver_name", "")).split())[:120],
                 vehicle_type=vehicle_type,
+                manager=manager,
             )
             changes = {f: [None, getattr(card, f)] for f in ("number", "vehicle", "driver_name") if getattr(card, f)}
             if vehicle_type:
                 changes["vehicle_type"] = [None, vehicle_type.name]
+            if manager:
+                changes["manager"] = [None, managers.user_label(manager)]
             svc.record_audit(AuditLog.Action.CARD_CREATE, card, request.user, changes=changes)
         return {"id": card.pk}
 
@@ -119,6 +128,30 @@ def card_vehicle_type(request, pk):
         return {"card": _json_card(card), "changed": changed}
 
     return _safe(run)
+
+
+@login_required
+@require_POST
+def card_manager(request, pk):
+    """Менеджер зі списку «Карти»: лише в нашій базі, зберігається одразу після вибору."""
+    card = get_object_or_404(Card.objects.select_related("manager"), pk=pk)
+    data = _body(request)
+
+    def run():
+        manager = managers.parse_manager(data.get("manager"), current_id=card.manager_id)
+        changed = svc.set_manager(card, manager, user=request.user)
+        return {"card": _json_card(card), "changed": changed}
+
+    return _safe(run)
+
+
+def _manager_options(card: Card | None = None) -> list[tuple[int, str]]:
+    """Вибір менеджера: активні користувачі з групи «Менеджери» і поточний менеджер картки,
+    навіть якщо його вже прибрали з групи (інакше збереження форми мовчки зняло б його)."""
+    options = [(user.pk, managers.user_label(user)) for user in managers.assignable_managers()]
+    if card is not None and card.manager_id and card.manager_id not in {pk for pk, _ in options}:
+        options.append((card.manager_id, f"{card.manager_name} (не менеджер)"))
+    return options
 
 
 @login_required
@@ -202,6 +235,7 @@ def card_detail(request, pk):
         {
             "card": card,
             "vehicle_types": VehicleType.objects.all(),
+            "manager_options": _manager_options(card),
             "caps": svc.capabilities(card),
             "provider_colors": ProviderConfig.row_colors(),
             "transactions": transactions,
@@ -242,6 +276,11 @@ def _card_detail_post(request, card: Card) -> None:
                 if "vehicle_type" in request.POST
                 else card.vehicle_type
             )
+            manager = (
+                managers.parse_manager(request.POST["manager"], current_id=card.manager_id)
+                if "manager" in request.POST
+                else card.manager
+            )
             # Поля, яких форма не надсилає (вимкнені або окрема кнопка звірки), лишаються як є
             changed = svc.update_info(
                 card,
@@ -252,6 +291,7 @@ def _card_detail_post(request, card: Card) -> None:
                 push=action == "push",
             )
             changed = svc.set_vehicle_type(card, vehicle_type, user=request.user) or changed
+            changed = svc.set_manager(card, manager, user=request.user) or changed
             if changed:
                 messages.success(request, "Зміни збережено.")
             else:

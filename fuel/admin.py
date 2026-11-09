@@ -5,6 +5,7 @@ from django.db.models import Count
 from django.utils.html import format_html
 
 from .card_service import record_audit
+from .managers import assignable_managers
 from .models import AuditLog, Card, ProviderConfig, Transaction, VehicleType
 from .services import MODE_DAYS, MODE_PERIOD, sync_configs
 
@@ -94,10 +95,24 @@ class VehicleTypeAdmin(admin.ModelAdmin):
 @admin.register(Card)
 class CardAdmin(admin.ModelAdmin):
     list_display = (
-        "provider", "number", "external_id", "vehicle", "vehicle_type", "driver_name", "status", "status_updated_at"
+        "provider",
+        "number",
+        "external_id",
+        "vehicle",
+        "vehicle_type",
+        "manager",
+        "driver_name",
+        "status",
+        "status_updated_at",
     )
-    list_filter = ("provider", "status", "vehicle_type")
-    list_select_related = ("vehicle_type",)
+    list_filter = ("provider", "status", "vehicle_type", "manager")
+    list_select_related = ("vehicle_type", "manager")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Менеджером можна призначити лише активного користувача з групи «Менеджери»
+        if db_field.name == "manager":
+            kwargs["queryset"] = assignable_managers()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     search_fields = ("number", "external_id", "vehicle", "driver_name", "note")
 
 

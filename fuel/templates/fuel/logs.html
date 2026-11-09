@@ -28,6 +28,12 @@
       {% for value, label in vtypes %}<option value="{{ value }}" {% if value == vtype %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </label>
+  <label title="Лише записи про картки: синхронізації не мають менеджера й з цим фільтром не показуються">Менеджер
+    <select name="mgr" onchange="this.form.submit()">
+      <option value="">Усі</option>
+      {% for value, label in mgrs %}<option value="{{ value }}" {% if value == mgr %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
   <label class="inline"><input type="checkbox" name="errors" value="1" {% if errors_only %}checked{% endif %} onchange="this.form.submit()"> Лише помилки</label>
   <div class="actions">
     <a class="btn" href="{% url 'logs' %}?kind=" id="logs-reset"

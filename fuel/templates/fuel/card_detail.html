@@ -75,6 +75,7 @@ tr.dim td{color:#999}
       <dt>Номер на картці</dt><dd>{{ card.ext_number|default:card.number }}</dd>
       <dt>Ідентифікатор</dt><dd>{{ card.number }}</dd>
       <dt>ID у провайдера</dt><dd>{{ card.external_id|default:"—" }}</dd>
+      <dt>Менеджер</dt><dd>{% if card.manager_id %}{{ card.manager_name }}{% if card.manager.email %} · <a href="mailto:{{ card.manager.email }}">{{ card.manager.email }}</a>{% endif %}{% else %}<span class="dim">не призначено</span>{% endif %}</dd>
       <dt>Статус</dt><dd>{% if card.status is not None %}{{ card.get_status_display }}{% else %}<span class="dim">невідомо</span>{% endif %}</dd>
       <dt>Статус оновлено</dt><dd>{{ card.status_updated_at|date:"d.m.Y H:i"|default:"—" }}</dd>
       <dt>Ліміти <span class="help" title="{{ limits_help }}">?</span></dt>
@@ -213,6 +214,13 @@ tr.dim td{color:#999}
           {% for vt in vehicle_types %}<option value="{{ vt.pk }}"{% if vt.pk == card.vehicle_type_id %} selected{% endif %}>{{ vt.name }}</option>{% endfor %}
         </select>
         <span class="hint local">лише в нашій базі{% if user.is_staff %} · <a href="{% url 'admin:fuel_vehicletype_changelist' %}">довідник типів</a>{% endif %}</span>
+      </label>
+      <label>Менеджер
+        <select name="manager">
+          <option value="">— не призначено —</option>
+          {% for pk, label in manager_options %}<option value="{{ pk }}"{% if pk == card.manager_id %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <span class="hint local">відповідальний за авто, лише в нашій базі{% if user.is_staff %} · менеджери — користувачі з групи «Менеджери» (<a href="{% url 'admin:auth_user_changelist' %}">користувачі</a>){% endif %}</span>
       </label>
       {% if caps.petroline and caps.info_api and caps.mode_link %}
       <div class="status-row">

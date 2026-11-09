@@ -31,6 +31,12 @@
       {% for value, label in vtypes %}<option value="{{ value }}" {% if value == vtype %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </label>
+  <label>Менеджер
+    <select name="mgr">
+      <option value="">Усі</option>
+      {% for value, label in mgrs %}<option value="{{ value }}" {% if value == mgr %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
   <button>Показати</button>
 
   <div class="actions">
@@ -158,6 +164,7 @@
   <th class="c-driver own">Водій</th>
   <th class="c-vehicle own">Авто</th>
   <th class="c-vtype own">Тип авто</th>
+  <th class="c-manager own">Менеджер</th>
   <th class="c-status own">Статус</th>
   <th class="c-fuel">Пальне</th>
   <th class="n c-liters">Літри</th>
@@ -177,6 +184,7 @@
   <td class="c-driver own">{% if t.card.driver_name %}{{ t.card.driver_name }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
   <td class="c-vehicle own">{% if t.card.vehicle %}{{ t.card.vehicle }}{% elif t.card %}<span class="dim">не заповнено</span>{% else %}<span class="dim">—</span>{% endif %}</td>
   <td class="c-vtype own">{% if t.card.vehicle_type_id %}{{ t.card.vehicle_type.name }}{% else %}<span class="dim">—</span>{% endif %}</td>
+  <td class="c-manager own">{% if t.card.manager_id %}{{ t.card.manager_name }}{% else %}<span class="dim">—</span>{% endif %}</td>
   <td class="c-status own">{% if t.card and t.card.status is not None %}<span class="badge {% if t.card.status == st_active %}ok{% elif t.card.status == st_blocked %}bad{% endif %}">{{ t.card.get_status_display }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
   <td class="c-fuel">{{ t.fuel }}</td>
   <td class="n c-liters">{{ t.liters|default_if_none:""|floatformat:2 }}</td>
@@ -185,7 +193,7 @@
   <td class="c-station">{{ t.station }}</td>
 </tr>
 {% empty %}
-<tr><td colspan="15">Немає даних за обраний період</td></tr>
+<tr><td colspan="16">Немає даних за обраний період</td></tr>
 {% endfor %}
 </tbody>
 </table>
