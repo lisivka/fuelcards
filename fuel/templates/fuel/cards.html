@@ -134,7 +134,7 @@
 
 
 {% block content %}
-<div id="app" data-csrf="{{ csrf_token }}">
+<div id="app" data-csrf="{{ csrf_token }}" data-me="{{ me_id }}">
     <div id="msg" class="msg" role="status"></div>
 
     <div class="toolbar">
@@ -184,6 +184,11 @@
             {% for vt in vehicle_types %}<option value="{{ vt.pk }}">{{ vt.name }}</option>{% endfor %}
         </select>
 
+        <select id="f-mgr" title="Відповідальний менеджер">
+            <option value="">Усі менеджери</option>
+            {% for value, label in manager_filters %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+
         <span id="count" class="muted"></span>
 
         {% for b in sync_buttons %}
@@ -218,6 +223,7 @@
                 <th>Авто</th>
                 <th>Тип авто{% if user.is_staff %} <a class="help" href="{% url 'admin:fuel_vehicletype_changelist' %}" title="Довідник типів авто (адмінка)">+</a>{% endif %}</th>
                 <th>ПІБ водія</th>
+                <th>Менеджер</th>
                 <th>Статус</th>
                 <th>Дії</th>
             </tr>
@@ -235,6 +241,7 @@
                     data-editable="{% if r.editable %}1{% else %}0{% endif %}"
                     data-mismatch="{% if r.pl_mismatch %}1{% else %}0{% endif %}"
                     data-vtype="{{ r.vehicle_type_id|default_if_none:'' }}"
+                    data-mgr="{{ r.manager_id|default_if_none:'' }}"
                 >
                     <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
@@ -271,6 +278,14 @@
                     </td>
 
                     <td>
+                        <select class="mg" title="Відповідальний менеджер: зберігається одразу, лише в нашій базі">
+                            <option value="">—</option>
+                            {% for pk, label in manager_options %}<option value="{{ pk }}"{% if pk == r.manager_id %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                            {% if r.manager_id and r.manager_id not in manager_option_ids %}<option value="{{ r.manager_id }}" selected>{{ r.manager }} (не менеджер)</option>{% endif %}
+                        </select>
+                    </td>
+
+                    <td>
                         <span class="badge status-badge">
                             {{ r.status_label }}
                         </span>
@@ -296,7 +311,7 @@
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="9">
+                    <td colspan="10">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -390,6 +405,12 @@
         // "" — усі, "none" — без типу, інакше id типу
         var vtype = document.getElementById("f-vtype").value;
 
+        // "" — усі, "none" — без менеджера, "me" — мої, інакше id користувача
+        var mgr = document.getElementById("f-mgr").value;
+        if (mgr === "me") {
+            mgr = app.dataset.me;
+        }
+
         var shown = 0;
 
         rows.forEach(function (tr) {
@@ -407,7 +428,9 @@
                     tr.querySelector(".d").value.toLowerCase()
                         .includes(driver)) &&
                 (!vtype ||
-                    tr.dataset.vtype === (vtype === "none" ? "" : vtype));
+                    tr.dataset.vtype === (vtype === "none" ? "" : vtype)) &&
+                (!mgr ||
+                    tr.dataset.mgr === (mgr === "none" ? "" : mgr));
 
             tr.style.display = matches ? "" : "none";
 
@@ -471,7 +494,7 @@
         }
     );
 
-    ["f-number", "f-vehicle", "f-driver", "f-vtype"].forEach(
+    ["f-number", "f-vehicle", "f-driver", "f-vtype", "f-mgr"].forEach(
         function (id) {
             document.getElementById(id).addEventListener(
                 "input",
@@ -479,6 +502,41 @@
             );
         }
     );
+
+    // Менеджер у рядку: зберігається одразу після вибору.
+
+    tbody.addEventListener("change", function (event) {
+        var select = event.target.closest("select.mg");
+
+        if (!select) {
+            return;
+        }
+
+        var tr = select.closest("tr[data-id]");
+        var previous = tr.dataset.mgr;
+
+        select.disabled = true;
+
+        post("/cards/" + tr.dataset.id + "/manager/", {
+            manager: select.value
+        }).then(function (result) {
+            var id = result.card.manager_id;
+            tr.dataset.mgr = id === null ? "" : String(id);
+            select.value = tr.dataset.mgr;
+
+            flash(
+                "Менеджер картки " + tr.dataset.number + ": " +
+                (result.card.manager || "не призначено"),
+                true
+            );
+            applyFilters();
+        }).catch(function (error) {
+            select.value = previous;
+            flash(error.message, false);
+        }).then(function () {
+            select.disabled = false;
+        });
+    });
 
     // Тип авто в рядку: зберігається одразу після вибору.
 
@@ -658,7 +716,8 @@
                 number: form.number.value,
                 vehicle: form.vehicle.value,
                 driver_name: form.driver_name.value,
-                vehicle_type: form.vehicle_type ? form.vehicle_type.value : ""
+                vehicle_type: form.vehicle_type ? form.vehicle_type.value : "",
+                manager: form.manager ? form.manager.value : ""
             }).then(function () {
                 location.reload();
             }).catch(function (error) {
