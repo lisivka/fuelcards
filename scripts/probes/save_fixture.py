@@ -4,6 +4,7 @@
     python scripts/probes/save_fixture.py                      # за вчора, обидва провайдери
     python scripts/probes/save_fixture.py --date 2026-11-05 --rows 4
     python scripts/probes/save_fixture.py --only upg
+    python scripts/probes/save_fixture.py --only ukrnafta --date 2026-10-11 --days 30   # період: з дати N днів
 
 Що робить:
 - UPG: `POST /login`, потім одна сторінка `POST /fuel-card-history` за день;
@@ -50,7 +51,8 @@ SENSITIVE = re.compile(
 )
 # Публічні назви, які потрібні тестам: пальне, АЗС, продукт
 SAFE = re.compile(
-    r"^(fuel|fuelname|service_station|station|terminalname|azsname|productname)$", re.IGNORECASE
+    r"^(fuel|fuelname|service_station|station|terminalname|azsname|productname|errordescription|rownumber)$",
+    re.IGNORECASE,
 )
 SAFE_PATHS = {("products", "name")}  # products[].name — назва пального UkrNafta
 
@@ -100,11 +102,11 @@ def sample(rows: list[dict], kind, per_kind: int) -> list[dict]:
     return result
 
 
-def fetch_upg(day: date) -> dict:
+def fetch_upg(day: date, days: int) -> dict:
     provider = UpgProvider()
     resp = requests.post(
         provider.URL,
-        data={"date_from": day.isoformat(), "date_to": (day + timedelta(days=1)).isoformat(), "page": 1},
+        data={"date_from": day.isoformat(), "date_to": (day + timedelta(days=days)).isoformat(), "page": 1},
         headers={"Accept": "application/json", "Authorization": f"Bearer {provider._login()}"},
         timeout=TIMEOUT,
     )
@@ -112,12 +114,12 @@ def fetch_upg(day: date) -> dict:
     return resp.json()
 
 
-def fetch_ukrnafta(day: date) -> dict:
+def fetch_ukrnafta(day: date, days: int) -> dict:
     resp = requests.get(
         UkrnaftaProvider.URL,
         params={
             "fromDate": day.isoformat(),
-            "toDate": (day + timedelta(days=1)).isoformat(),
+            "toDate": (day + timedelta(days=days)).isoformat(),
             "holderId": os.environ["UKRNAFTA_HOLDER_ID"],
             "page": 0,
             "limit": 1000,
@@ -132,7 +134,7 @@ def fetch_ukrnafta(day: date) -> dict:
     return resp.json()
 
 
-def save(name: str, payload: dict, list_key: str, kind, rows: int, day: date) -> None:
+def save(name: str, payload: dict, list_key: str, kind, rows: int, day: date, days: int) -> None:
     all_rows = payload.get(list_key) or []
     payload = {**payload, list_key: sample(all_rows, kind, rows)}
     anon = Anonymizer()
@@ -140,6 +142,7 @@ def save(name: str, payload: dict, list_key: str, kind, rows: int, day: date) ->
     clean["_fixture"] = {
         "source": name,
         "date": day.isoformat(),
+        "days": days,
         "rows_total": len(all_rows),
         "note": "знеособлено scripts/probes/save_fixture.py; рядків обрізано",
     }
@@ -155,24 +158,34 @@ def save(name: str, payload: dict, list_key: str, kind, rows: int, day: date) ->
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--date", type=date.fromisoformat, default=date.today() - timedelta(days=1))
+    parser.add_argument("--days", type=int, default=1, help="тривалість періоду від --date, днів (типово 1)")
     parser.add_argument("--rows", type=int, default=3, help="рядків кожного виду (типово 3)")
     parser.add_argument("--only", choices=["upg", "ukrnafta"])
     args = parser.parse_args()
 
     if args.only in (None, "upg"):
         try:
-            save("upg", fetch_upg(args.date), "data", lambda r: "fuel", args.rows, args.date)
+            save(
+                "upg",
+                fetch_upg(args.date, args.days),
+                "data",
+                lambda r: "fuel",
+                args.rows,
+                args.date,
+                args.days,
+            )
         except Exception as exc:  # проба: показати й іти далі до іншого провайдера
             print(f"upg: помилка {type(exc).__name__}: {str(exc)[:300]}")
     if args.only in (None, "ukrnafta"):
         try:
             save(
                 "ukrnafta",
-                fetch_ukrnafta(args.date),
+                fetch_ukrnafta(args.date, args.days),
                 "transactions",
                 lambda r: (r.get("typeId"), bool(r.get("canceled"))),
                 args.rows,
                 args.date,
+                args.days,
             )
         except Exception as exc:
             print(f"ukrnafta: помилка {type(exc).__name__}: {str(exc)[:300]}")
