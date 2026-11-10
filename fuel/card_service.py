@@ -31,7 +31,9 @@ def info_via_api(provider: str, editable: dict | None = None) -> bool:
 def editable_map() -> dict:
     """{code: True/False}: чи можна змінювати картки провайдера через API."""
     configs = ProviderConfig.ensure_all()
-    return {code: bool(cfg.is_active and cfg.edit_enabled and code in CLIENTS) for code, cfg in configs.items()}
+    return {
+        code: bool(cfg.is_active and cfg.edit_enabled and code in CLIENTS) for code, cfg in configs.items()
+    }
 
 
 def split_name(full: str) -> tuple[str, str]:
@@ -60,9 +62,13 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "status_updated": card.status_updated_at,
         "editable": editable.get(card.provider, False),
         # Авто/ПІБ у таблиці «Карти»: у Petroline з API вони змінюються лише на сторінці картки
-        "inline_info": not (card.provider == Provider.PETROLINE.value and info_via_api(card.provider, editable)),
+        "inline_info": not (
+            card.provider == Provider.PETROLINE.value and info_via_api(card.provider, editable)
+        ),
         # Petroline: тип картки і чи розходяться наші Авто/ПІБ з Petroline (за останнім оновленням)
-        "pl_type": pl.TYPE_NAMES.get(card.provider_card_type, "") if card.provider == Provider.PETROLINE.value else "",
+        "pl_type": pl.TYPE_NAMES.get(card.provider_card_type, "")
+        if card.provider == Provider.PETROLINE.value
+        else "",
         "pl_mismatch": petroline_mismatch(card),
         "pl_label": card.provider_label,
         "limits_short": card.limits_short,
@@ -83,9 +89,10 @@ def sync_ukrnafta_cards() -> tuple[int, int]:
             continue
         info = row.get("cardInfo") or {}
         name = " ".join(p for p in (info.get("lastName"), info.get("firstName")) if p)
-        vin = (row.get("vin") or "")
+        vin = row.get("vin") or ""
         card, was_created = Card.objects.get_or_create(
-            provider=Provider.UKRNAFTA.value, number=number,
+            provider=Provider.UKRNAFTA.value,
+            number=number,
             defaults={"vehicle": vin[:120], "driver_name": name[:120]},
         )
         if not was_created:
@@ -123,7 +130,8 @@ def sync_petroline_cards() -> tuple[int, int, str]:
     with transaction.atomic():
         for row in rows:
             card, was_created = Card.objects.get_or_create(
-                provider=Provider.PETROLINE.value, number=row["number"],
+                provider=Provider.PETROLINE.value,
+                number=row["number"],
             )
             if not card.vehicle and not card.driver_name:
                 card.vehicle = row["vehicle"][:120]
@@ -399,7 +407,9 @@ def update_info(
     }
     if note is not None:
         new["note"] = note.strip()[:200]
-    changes = {field: [getattr(card, field), value] for field, value in new.items() if getattr(card, field) != value}
+    changes = {
+        field: [getattr(card, field), value] for field, value in new.items() if getattr(card, field) != value
+    }
     if not changes:
         return False
 
@@ -471,7 +481,11 @@ def same_name_cards(card: Card, label: str) -> list[Card]:
     key = _clean(label).casefold()
     if not key:
         return []
-    cards = Card.objects.filter(provider=Provider.PETROLINE.value).exclude(provider_person_id="").exclude(pk=card.pk)
+    cards = (
+        Card.objects.filter(provider=Provider.PETROLINE.value)
+        .exclude(provider_person_id="")
+        .exclude(pk=card.pk)
+    )
     return [c for c in cards.order_by("status", "number") if _clean(c.provider_label).casefold() == key]
 
 
@@ -487,10 +501,16 @@ def person_duplicates() -> list[dict]:
     )
     groups: dict[str, list[Card]] = {}
     cards = Card.objects.filter(provider=Provider.PETROLINE.value, provider_person_id__in=person_ids)
-    for c in cards.annotate(last_tx=Max("transactions__timestamp")).order_by("provider_person_id", "status", "number"):
+    for c in cards.annotate(last_tx=Max("transactions__timestamp")).order_by(
+        "provider_person_id", "status", "number"
+    ):
         groups.setdefault(c.provider_person_id, []).append(c)
     return [
-        {"person_id": pid, "label": next((c.provider_label for c in group if c.provider_label), ""), "cards": group}
+        {
+            "person_id": pid,
+            "label": next((c.provider_label for c in group if c.provider_label), ""),
+            "cards": group,
+        }
         for pid, group in groups.items()
     ]
 
@@ -543,7 +563,9 @@ def _petroline_new_values(card: Card, mode: str, vehicle: str, driver_name: str)
     }
 
 
-def _update_petroline_info(card: Card, vehicle: str, driver_name: str, note: str | None, *, user, push: bool) -> bool:
+def _update_petroline_info(
+    card: Card, vehicle: str, driver_name: str, note: str | None, *, user, push: bool
+) -> bool:
     """Авто/ПІБ картки Petroline.
 
     - «Персональна»/«Техпролив»: збереження перейменовує водія в Petroline (якщо ім'я там інше),
@@ -602,7 +624,9 @@ def _update_petroline_info(card: Card, vehicle: str, driver_name: str, note: str
             card.provider_label = result.label[:200]
             fields += ["provider_card_type", "provider_person_id", "provider_transport_id", "provider_label"]
             if result.action == "created":
-                changes["provider_label"][1] += f" — новий водій у Petroline (id {result.person_id}), тип «Персональна»"
+                changes["provider_label"][1] += (
+                    f" — новий водій у Petroline (id {result.person_id}), тип «Персональна»"
+                )
             elif result.action == "linked":
                 changes["provider_label"][1] += (
                     f" — прив'язано до наявного водія Petroline (id {result.person_id}), тип «Персональна»"
@@ -616,8 +640,13 @@ def _update_petroline_info(card: Card, vehicle: str, driver_name: str, note: str
 
 def _apply_shared(other: Card, source: Card, new: dict, label: str, user) -> None:
     """Картка того самого водія Petroline отримує ті самі Авто/ПІБ (у Petroline це один запис)."""
-    other_changes = {f: [getattr(other, f), new[f]] for f in ("vehicle", "driver_name") if getattr(other, f) != new[f]}
-    other_changes["provider_label"] = [other.provider_label, f"{label} (спільний водій з карткою {source.display_number})"]
+    other_changes = {
+        f: [getattr(other, f), new[f]] for f in ("vehicle", "driver_name") if getattr(other, f) != new[f]
+    }
+    other_changes["provider_label"] = [
+        other.provider_label,
+        f"{label} (спільний водій з карткою {source.display_number})",
+    ]
     other.vehicle, other.driver_name, other.provider_label = new["vehicle"], new["driver_name"], label[:200]
     other.save(update_fields=["vehicle", "driver_name", "provider_label"])
     record_audit(AuditLog.Action.CARD_INFO, other, user, changes=other_changes, via_api=True)
@@ -696,7 +725,9 @@ def _petroline_caps(card: Card) -> dict:
         "provider_label": _clean(card.provider_label),
         "expected_label": expected,
         "label_mismatch": petroline_mismatch(card),
-        "from_petroline": pl.label_fields(card.provider_card_type, card.provider_person_id, card.provider_label),
+        "from_petroline": pl.label_fields(
+            card.provider_card_type, card.provider_person_id, card.provider_label
+        ),
         # Картка стане «Персональною»: чи є вже водій з таким ім'ям (тоді прив'яжемо до нього)
         "same_name_cards": same_name,
         "push_confirm": _push_confirm(card, mode, expected, shared, same_name),
@@ -717,5 +748,9 @@ def _push_confirm(card: Card, mode: str, expected: str, shared: list[Card], same
     else:
         text = f"Petroline: ім'я водія «{_clean(card.provider_label)}» → «{expected}»."
         if shared:
-            text += " Водій спільний: ім'я зміниться також для карток " + ", ".join(c.display_number for c in shared) + "."
+            text += (
+                " Водій спільний: ім'я зміниться також для карток "
+                + ", ".join(c.display_number for c in shared)
+                + "."
+            )
     return text + " Продовжити?"

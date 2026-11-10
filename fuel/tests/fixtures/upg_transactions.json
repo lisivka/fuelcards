@@ -1,0 +1,90 @@
+{
+  "data": [
+    {
+      "id": 18545709,
+      "card_id": 900001,
+      "card_number": "CARD_NUMBER-001",
+      "card_holder": "CARD_HOLDER-001",
+      "card_owner": "CARD_OWNER-001",
+      "fuel_id": 95,
+      "fuel": "Бензин Аи-95Евро",
+      "price": "88.9000",
+      "amount": "29.5900",
+      "total": "2615.7500",
+      "service_station": "АЗС №228 м. Київ, шосе Берестейське, 11 (post2)",
+      "address": "ADDRESS-001",
+      "transaction_date": "2026-11-09",
+      "transaction_time": "13:49:38"
+    },
+    {
+      "id": 18531018,
+      "card_id": 900002,
+      "card_number": "CARD_NUMBER-002",
+      "card_holder": "CARD_HOLDER-001",
+      "card_owner": "CARD_OWNER-001",
+      "fuel_id": 5,
+      "fuel": "Дизельне пальне",
+      "price": "102.9000",
+      "amount": "35.0000",
+      "total": "3514.0000",
+      "service_station": "АЗС №228 м. Київ, шосе Берестейське, 11 (post2)",
+      "address": "ADDRESS-001",
+      "transaction_date": "2026-11-09",
+      "transaction_time": "05:58:34"
+    },
+    {
+      "id": 18543959,
+      "card_id": 900003,
+      "card_number": "CARD_NUMBER-003",
+      "card_holder": "CARD_HOLDER-001",
+      "card_owner": "CARD_OWNER-001",
+      "fuel_id": 95,
+      "fuel": "Бензин Аи-95Евро",
+      "price": "88.9000",
+      "amount": "35.0000",
+      "total": "3094.0000",
+      "service_station": "АЗС №152 м. Київ, вул. Міська, 2-А",
+      "address": "ADDRESS-002",
+      "transaction_date": "2026-11-09",
+      "transaction_time": "12:56:54"
+    }
+  ],
+  "links": {
+    "first": "https://paycontainer.upg.ua/api/fuel-card-history?page=1",
+    "last": "https://paycontainer.upg.ua/api/fuel-card-history?page=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "links": [
+      {
+        "url": null,
+        "label": "&laquo; Previous",
+        "active": false
+      },
+      {
+        "url": "https://paycontainer.upg.ua/api/fuel-card-history?page=1",
+        "label": "1",
+        "active": true
+      },
+      {
+        "url": null,
+        "label": "Next &raquo;",
+        "active": false
+      }
+    ],
+    "path": "https://paycontainer.upg.ua/api/fuel-card-history",
+    "per_page": 50,
+    "to": 4,
+    "total": 4
+  },
+  "_fixture": {
+    "source": "upg",
+    "date": "2026-11-09",
+    "rows_total": 4,
+    "note": "знеособлено scripts/probes/save_fixture.py; рядків обрізано"
+  }
+}

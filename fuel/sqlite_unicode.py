@@ -4,6 +4,7 @@
 Підміняємо SQL-функцію like() на реалізацію, що порівнює без урахування регістру для будь-яких літер.
 Це зачіпає всі lookup-и Django (icontains, contains, startswith, ...) та пошук в адмінці.
 """
+
 import re
 from functools import lru_cache
 

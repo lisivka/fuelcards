@@ -1,0 +1,140 @@
+{
+  "transactions": [
+    {
+      "id": 22511116,
+      "rowNumber": 1,
+      "transactionId": 22511116,
+      "typeId": 302,
+      "operation": "Списання з гаманця",
+      "terminalDate": "2026-11-09T07:52:46",
+      "terminalId": 9034,
+      "terminalName": "АЗС №09/034 с-ще Ставище, вул. С. Цимбала, 3-Д",
+      "holderId": 900001,
+      "accountId": 900001,
+      "cardId": "CARDID-001",
+      "purseId": 7,
+      "purseRemark": "PURSEREMARK-001",
+      "amount": 0,
+      "amountWithDicsount": 0,
+      "quantity": 0,
+      "discount": 0,
+      "products": [
+        {
+          "goodsId": 6,
+          "name": "ДП",
+          "amount": 0,
+          "price": 103.9,
+          "quantity": 0,
+          "discount": 0
+        }
+      ],
+      "parties": [],
+      "canceled": false,
+      "acquirerId": 9,
+      "receiptLinks": {
+        "html": "",
+        "pdf": ""
+      }
+    },
+    {
+      "id": 22073979,
+      "rowNumber": 2,
+      "transactionId": 22073979,
+      "typeId": 214,
+      "operation": "Поповнення гаманця",
+      "terminalDate": "2026-10-31T05:34:25.763",
+      "terminalId": 0,
+      "terminalName": "Центр",
+      "holderId": 900001,
+      "accountId": 900001,
+      "cardId": "",
+      "purseId": 0,
+      "purseRemark": "PURSEREMARK-002",
+      "amount": 410.03,
+      "amountWithDicsount": 410.03,
+      "quantity": 0,
+      "discount": 0,
+      "products": [],
+      "parties": [],
+      "canceled": false,
+      "acquirerId": 9,
+      "receiptLinks": {
+        "html": "",
+        "pdf": ""
+      }
+    },
+    {
+      "id": 22014257,
+      "rowNumber": 3,
+      "transactionId": 22014257,
+      "typeId": 302,
+      "operation": "Списання з гаманця",
+      "terminalDate": "2026-10-30T07:45:02",
+      "terminalId": 9059,
+      "terminalName": "АЗС №4047 с.Соф.Борщагівка,вул.Вел.Кільцева,104 А",
+      "holderId": 900001,
+      "accountId": 900001,
+      "cardId": "CARDID-002",
+      "purseId": 7,
+      "purseRemark": "PURSEREMARK-001",
+      "amount": -13610.58,
+      "amountWithDicsount": -13200.55,
+      "quantity": -132.27,
+      "discount": 410.03,
+      "products": [
+        {
+          "goodsId": 6,
+          "name": "ДП",
+          "amount": 13610.58,
+          "price": 102.9,
+          "quantity": 132.27,
+          "discount": 410.03
+        }
+      ],
+      "parties": [],
+      "canceled": false,
+      "acquirerId": 9,
+      "receiptLinks": {
+        "html": "https://naftacards.ukrnafta.com/f/02be1e1MWWKOuSb?format=html",
+        "pdf": "https://naftacards.ukrnafta.com/f/02be1e1MWWKOuSb"
+      }
+    },
+    {
+      "id": 22008041,
+      "rowNumber": 4,
+      "transactionId": 22008041,
+      "typeId": 214,
+      "operation": "Поповнення гаманця",
+      "terminalDate": "2026-10-30T05:34:54.387",
+      "terminalId": 0,
+      "terminalName": "Центр",
+      "holderId": 900001,
+      "accountId": 900001,
+      "cardId": "",
+      "purseId": 0,
+      "purseRemark": "PURSEREMARK-002",
+      "amount": 13610.66,
+      "amountWithDicsount": 13610.66,
+      "quantity": 0,
+      "discount": 0,
+      "products": [],
+      "parties": [],
+      "canceled": false,
+      "acquirerId": 9,
+      "receiptLinks": {
+        "html": "",
+        "pdf": ""
+      }
+    }
+  ],
+  "countOfRows": 325,
+  "errorCode": 0,
+  "errorDescription": "Ok",
+  "_fixture": {
+    "source": "ukrnafta",
+    "date": "2026-10-10",
+    "days": 31,
+    "rows_total": 325,
+    "note": "знеособлено scripts/probes/save_fixture.py; рядків обрізано"
+  }
+}

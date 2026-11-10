@@ -42,26 +42,33 @@ def cards(request):
     syncable = svc.sync_map()
     rows = [svc.serialize(c, editable) for c in Card.objects.select_related("vehicle_type", "manager")]
     options = _manager_options()
-    return render(request, "fuel/cards.html", {
-        "rows": rows,
-        "vehicle_types": VehicleType.objects.all(),
-        "manager_options": options,
-        "manager_option_ids": {pk for pk, _ in options},
-        "manager_filters": managers.filter_choices(),
-        "me_id": request.user.pk,
-        "providers": Provider.choices,
-        "provider_colors": ProviderConfig.row_colors(),
-        "duplicates_count": len(svc.person_duplicates()),
-        "mismatch_count": sum(1 for r in rows if r["pl_mismatch"]),
-        "limits_help": limits.HELP_TEXT,
-        "sync_buttons": [
-            {"provider": code, "label": label, "kind": "cards"}
-            for code, label in svc.SYNC_LABELS.items() if syncable.get(code)
-        ] + [
-            {"provider": code, "label": label, "kind": "limits"}
-            for code, label in svc.LIMIT_SYNC_LABELS.items() if syncable.get(code)
-        ],
-    })
+    return render(
+        request,
+        "fuel/cards.html",
+        {
+            "rows": rows,
+            "vehicle_types": VehicleType.objects.all(),
+            "manager_options": options,
+            "manager_option_ids": {pk for pk, _ in options},
+            "manager_filters": managers.filter_choices(),
+            "me_id": request.user.pk,
+            "providers": Provider.choices,
+            "provider_colors": ProviderConfig.row_colors(),
+            "duplicates_count": len(svc.person_duplicates()),
+            "mismatch_count": sum(1 for r in rows if r["pl_mismatch"]),
+            "limits_help": limits.HELP_TEXT,
+            "sync_buttons": [
+                {"provider": code, "label": label, "kind": "cards"}
+                for code, label in svc.SYNC_LABELS.items()
+                if syncable.get(code)
+            ]
+            + [
+                {"provider": code, "label": label, "kind": "limits"}
+                for code, label in svc.LIMIT_SYNC_LABELS.items()
+                if syncable.get(code)
+            ],
+        },
+    )
 
 
 @login_required
@@ -89,7 +96,9 @@ def card_create(request):
                 vehicle_type=vehicle_type,
                 manager=manager,
             )
-            changes = {f: [None, getattr(card, f)] for f in ("number", "vehicle", "driver_name") if getattr(card, f)}
+            changes = {
+                f: [None, getattr(card, f)] for f in ("number", "vehicle", "driver_name") if getattr(card, f)
+            }
             if vehicle_type:
                 changes["vehicle_type"] = [None, vehicle_type.name]
             if manager:
@@ -110,7 +119,9 @@ def card_info(request, pk):
         if card.provider == Provider.PETROLINE.value and svc.info_via_api(card.provider):
             # Тут немає попередження про спільного водія і полів «Модель / Держномер»
             raise ValueError("Авто/ПІБ картки Petroline змінюються на сторінці картки")
-        svc.update_info(card, str(data.get("vehicle", "")), str(data.get("driver_name", "")), user=request.user)
+        svc.update_info(
+            card, str(data.get("vehicle", "")), str(data.get("driver_name", "")), user=request.user
+        )
         return {"card": _json_card(card)}
 
     return _safe(run)
@@ -124,7 +135,9 @@ def card_vehicle_type(request, pk):
     data = _body(request)
 
     def run():
-        changed = svc.set_vehicle_type(card, svc.parse_vehicle_type(data.get("vehicle_type")), user=request.user)
+        changed = svc.set_vehicle_type(
+            card, svc.parse_vehicle_type(data.get("vehicle_type")), user=request.user
+        )
         return {"card": _json_card(card), "changed": changed}
 
     return _safe(run)
@@ -206,6 +219,7 @@ def _json_card(card):
     row = svc.serialize(card)
     row["status_updated"] = row["status_updated"].isoformat() if row["status_updated"] else None
     return row
+
 
 # Куди повертає кнопка «Назад» зі сторінки картки (лише зі списку — без відкритих редиректів)
 # Ключі — імена URL-маршрутів
