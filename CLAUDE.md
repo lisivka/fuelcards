@@ -27,13 +27,17 @@ python -m ruff check .                     # лінтер
 python -m ruff format .                    # форматування
 python -m ruff format --check .            # перевірка форматування (має бути без змін)
 python manage.py sync_fuel --days 2        # синхронізація (ходить у РЕАЛЬНІ API — лише з дозволу)
+python manage.py sync_fuel --days 90 --provider upg   # вибрані провайдери; також --config-days / --config-period
+python manage.py sync_cards --provider petroline      # картки з API (типово ukrnafta) — лише з дозволу
 ```
+Повний довідник команд (синхронізація за датами й провайдерами, проби, сервер) — у `README.md`;
+нову команду чи ключ додавай туди ж.
 
 ## Структура
 - `config/` — налаштування Django; `fuel/` — єдиний застосунок.
 - `fuel/providers/` — адаптери провайдерів; усі повертають `NormalizedTx` (`base.py`).
 - `fuel/services.py` — upsert і синхронізація; `fuel/card_service.py` — керування картками.
-- `fuel/tests/` — тести; `fuel/tests/fixtures/` — збережені (знеособлені) відповіді API.
+- `fuel/tests/` — тести; `fuel/tests/fixtures/` — збережені (знеособлені) відповіді API; нові фікстури транзакцій — `scripts/probes/save_fixture.py` (з дозволу), перегляд перед комітом.
 - `scripts/probes/` — ручні скрипти перевірки API провайдерів (не тести, тут не запускати).
 - `deploy/` — systemd-юніт, `deploy.sh`, інструкція для сервера.
 - `docs/` — задачі, рішення, правила роботи.
