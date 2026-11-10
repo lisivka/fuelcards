@@ -416,7 +416,9 @@ def test_vehicle_card_save_is_local_only(logged_client, fake_petroline):
     card = petroline_card(card_type=5, person="", transport="3001", provider_label="FORD AI17-51KI")
 
     page = logged_client.get(detail_url(card))
-    logged_client.post(detail_url(card), {"action": "save", "vehicle": "AA0000AA", "driver_name": "Іваненко Іван"})
+    logged_client.post(
+        detail_url(card), {"action": "save", "vehicle": "AA0000AA", "driver_name": "Іваненко Іван"}
+    )
 
     assert page.context["caps"]["mode_link"] is True
     assert "Зберегти і записати в Petroline" in page.content.decode()
@@ -430,7 +432,9 @@ def test_vehicle_card_push_links_and_stores_new_binding(logged_client, fake_petr
     card = petroline_card(card_type=5, person="", transport="3001")
     fake_petroline.result = InfoResult(1, "700", "", "AA0000AA | Іваненко Іван", action="linked")
 
-    logged_client.post(detail_url(card), {"action": "push", "vehicle": "AA0000AA", "driver_name": "Іваненко Іван"})
+    logged_client.post(
+        detail_url(card), {"action": "push", "vehicle": "AA0000AA", "driver_name": "Іваненко Іван"}
+    )
 
     assert fake_petroline.calls == [
         ("ID-1", {"vehicle": "AA0000AA", "driver_name": "Іваненко Іван", "expected": (5, "")})
@@ -442,7 +446,9 @@ def test_vehicle_card_push_links_and_stores_new_binding(logged_client, fake_petr
 
 @pytest.mark.django_db
 def test_vehicle_card_shows_existing_person_with_same_name(logged_client):
-    petroline_card("OLD-1", person="700", provider_label="AA0000AA | Іваненко Іван", status=CardStatus.BLOCKED)
+    petroline_card(
+        "OLD-1", person="700", provider_label="AA0000AA | Іваненко Іван", status=CardStatus.BLOCKED
+    )
     card = petroline_card("NEW-1", card_type=5, person="", vehicle="AA0000AA", driver_name="Іваненко Іван")
 
     caps = logged_client.get(detail_url(card)).context["caps"]
@@ -562,7 +568,6 @@ def test_sync_petroline_cards_fills_only_empty_cards(monkeypatch):
     assert (new.vehicle, new.driver_name, new.provider_person_id) == ("Тестовий Т", "", "501")
     # у нас уже щось є — не чіпаємо, лише запам'ятовуємо, як у Petroline (розбіжність видно на сторінці)
     assert (ours.vehicle, ours.driver_name, ours.provider_label) == ("OURS", "", "Тестовий Т")
-
 
 
 @pytest.mark.django_db

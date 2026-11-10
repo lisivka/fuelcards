@@ -14,4 +14,6 @@ class FuelConfig(AppConfig):
         from .sqlite_unicode import install
 
         install()
-        pre_delete.connect(audit_user_deleted, sender=get_user_model(), dispatch_uid="fuel_audit_user_deleted")
+        pre_delete.connect(
+            audit_user_deleted, sender=get_user_model(), dispatch_uid="fuel_audit_user_deleted"
+        )

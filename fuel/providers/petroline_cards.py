@@ -135,7 +135,13 @@ class PetrolineCards:
         where = {
             "operatorType": 1,
             "operands": [
-                {"operatorType": 0, "operands": None, "field": "number", "filterType": 1, "value": card_number}
+                {
+                    "operatorType": 0,
+                    "operands": None,
+                    "field": "number",
+                    "filterType": 1,
+                    "value": card_number,
+                }
             ],
             "field": None,
             "filterType": 0,
@@ -143,7 +149,9 @@ class PetrolineCards:
         }
         body = {"where": where, "orderBy": [{"field": "id", "order": 0}], "skip": 0, "take": 5}
         rows = self.client.post("/api/Keys/list", body)
-        found = [r for r in rows if str(r.get("number")) == str(card_number)] if isinstance(rows, list) else []
+        found = (
+            [r for r in rows if str(r.get("number")) == str(card_number)] if isinstance(rows, list) else []
+        )
         if len(found) != 1:
             raise PetrolineError(f"Картку {card_number} у Petroline не знайдено (збігів: {len(found)})")
         return found[0]
@@ -224,7 +232,9 @@ class PetrolineCards:
             )
         mode = edit_mode(card_type, person_id)
         if mode == EDIT_NONE:
-            raise PetrolineError(f"Petroline: картку типу «{TYPE_NAMES.get(card_type, card_type)}» тут не змінюємо")
+            raise PetrolineError(
+                f"Petroline: картку типу «{TYPE_NAMES.get(card_type, card_type)}» тут не змінюємо"
+            )
         text = _clean(driver_name) if mode == EDIT_DRIVER else format_label(vehicle, driver_name)
         if not text:
             raise PetrolineError("Petroline: ім'я водія не може бути порожнім")
@@ -236,7 +246,9 @@ class PetrolineCards:
         others = [p for p in same if str(p.get("id")) != person_id]
         if others:
             ids = ", ".join(str(p.get("id")) for p in others)
-            raise PetrolineError(f"у Petroline вже є інший водій «{text}» (id {ids}) — ім'я водія має бути унікальним")
+            raise PetrolineError(
+                f"у Petroline вже є інший водій «{text}» (id {ids}) — ім'я водія має бути унікальним"
+            )
         person = next((p for p in persons if str(p.get("id")) == person_id), None)
         if person is None:
             raise PetrolineError(f"Petroline: водія {person_id} не знайдено")
@@ -249,7 +261,9 @@ class PetrolineCards:
         """Картка стає «Персональною» на водієві `text`: наявному (якщо він один і активний) або новому."""
         if len(same) > 1:
             ids = ", ".join(str(p.get("id")) for p in same)
-            raise PetrolineError(f"у Petroline кілька водіїв «{text}» (id {ids}) — прив'яжіть картку в кабінеті")
+            raise PetrolineError(
+                f"у Petroline кілька водіїв «{text}» (id {ids}) — прив'яжіть картку в кабінеті"
+            )
         if not same:
             return self._create_person_and_link(card, text)
         person = same[0]

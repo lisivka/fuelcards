@@ -68,9 +68,7 @@ def test_cards_page_shows_identifier_and_colors(logged_client):
 
 @pytest.mark.django_db
 def test_transactions_page_rows_have_provider_class(logged_client):
-    Transaction.objects.create(
-        provider="upg", external_id="TX-1", card_ref="C-1", timestamp=timezone.now()
-    )
+    Transaction.objects.create(provider="upg", external_id="TX-1", card_ref="C-1", timestamp=timezone.now())
 
     html = logged_client.get(reverse("transactions")).content.decode()
 

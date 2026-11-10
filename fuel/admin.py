@@ -113,12 +113,24 @@ class CardAdmin(admin.ModelAdmin):
         if db_field.name == "manager":
             kwargs["queryset"] = assignable_managers()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     search_fields = ("number", "external_id", "vehicle", "driver_name", "note")
 
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
-    list_display = ("timestamp", "provider", "kind", "card_ref", "fuel", "liters", "price", "amount", "station", "canceled")
+    list_display = (
+        "timestamp",
+        "provider",
+        "kind",
+        "card_ref",
+        "fuel",
+        "liters",
+        "price",
+        "amount",
+        "station",
+        "canceled",
+    )
     list_filter = ("provider", "kind", "canceled")
     search_fields = ("card_ref", "vehicle_raw", "station")
     date_hierarchy = "timestamp"

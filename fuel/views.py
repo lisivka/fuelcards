@@ -19,7 +19,19 @@ from .services import MAX_CATCHUP_DAYS, sync_since_last
 
 # Параметри фільтрів, які дозволено повернути в адресу після синхронізації
 _FILTER_KEYS = {
-    "from", "to", "period", "provider", "status", "vtype", "mgr", "card", "driver", "vehicle", "q", "page", "per_page"
+    "from",
+    "to",
+    "period",
+    "provider",
+    "status",
+    "vtype",
+    "mgr",
+    "card",
+    "driver",
+    "vehicle",
+    "q",
+    "page",
+    "per_page",
 }
 
 STATUS_UNKNOWN = "unknown"
@@ -145,8 +157,11 @@ def transactions(request):
         qs = qs.filter(Q(card__vehicle__icontains=vehicle) | Q(vehicle_raw__icontains=vehicle))
     if q:
         qs = qs.filter(
-            Q(card_ref__icontains=q) | Q(card__ext_number__icontains=q) | Q(vehicle_raw__icontains=q)
-            | Q(card__vehicle__icontains=q) | Q(card__driver_name__icontains=q)
+            Q(card_ref__icontains=q)
+            | Q(card__ext_number__icontains=q)
+            | Q(vehicle_raw__icontains=q)
+            | Q(card__vehicle__icontains=q)
+            | Q(card__driver_name__icontains=q)
             | Q(station__icontains=q)
         )
 
@@ -161,24 +176,51 @@ def transactions(request):
     page_range = list(paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=3))
     period_params = {"period": period} if period else {"from": d_from.isoformat(), "to": d_to.isoformat()}
     filter_params = {
-        "provider": provider, "status": status, "vtype": vtype, "mgr": mgr, "card": card, "driver": driver,
-        "vehicle": vehicle, "q": q,
+        "provider": provider,
+        "status": status,
+        "vtype": vtype,
+        "mgr": mgr,
+        "card": card,
+        "driver": driver,
+        "vehicle": vehicle,
+        "q": q,
     }
     query = urlencode(
         {**period_params, **{k: v for k, v in filter_params.items() if v}, "per_page": per_page}
     )
-    return render(request, "fuel/transactions.html", {
-        "page": page, "page_range": page_range, "ellipsis": paginator.ELLIPSIS,
-        "totals": totals, "d_from": d_from, "d_to": d_to, "period": period,
-        "period_presets": PERIOD_PRESETS, "per_page": per_page, "per_page_choices": PER_PAGE_CHOICES,
-        "provider": provider, "status": status, "vtype": vtype, "mgr": mgr, "card": card, "driver": driver,
-        "vehicle": vehicle, "q": q, "query": query,
-        "providers": Provider.choices, "statuses": STATUS_CHOICES, "vtypes": vtype_choices(),
-        "mgrs": managers.filter_choices(),
-        "column_choices": COLUMN_CHOICES,
-        "provider_colors": ProviderConfig.row_colors(),
-        "st_active": CardStatus.ACTIVE.value, "st_blocked": CardStatus.BLOCKED.value,
-    })
+    return render(
+        request,
+        "fuel/transactions.html",
+        {
+            "page": page,
+            "page_range": page_range,
+            "ellipsis": paginator.ELLIPSIS,
+            "totals": totals,
+            "d_from": d_from,
+            "d_to": d_to,
+            "period": period,
+            "period_presets": PERIOD_PRESETS,
+            "per_page": per_page,
+            "per_page_choices": PER_PAGE_CHOICES,
+            "provider": provider,
+            "status": status,
+            "vtype": vtype,
+            "mgr": mgr,
+            "card": card,
+            "driver": driver,
+            "vehicle": vehicle,
+            "q": q,
+            "query": query,
+            "providers": Provider.choices,
+            "statuses": STATUS_CHOICES,
+            "vtypes": vtype_choices(),
+            "mgrs": managers.filter_choices(),
+            "column_choices": COLUMN_CHOICES,
+            "provider_colors": ProviderConfig.row_colors(),
+            "st_active": CardStatus.ACTIVE.value,
+            "st_blocked": CardStatus.BLOCKED.value,
+        },
+    )
 
 
 @login_required
@@ -223,24 +265,53 @@ def _export_csv(qs, d_from, d_to):
     resp["Content-Disposition"] = f'attachment; filename="fuel_{d_from}_{d_to}.csv"'
     resp.write("\ufeff")  # BOM для Excel
     w = csv.writer(resp, delimiter=";")
-    w.writerow([
-        "Дата", "Постачальник", "Тип", "Картка", "Ідентифікатор", "Авто (пост.)", "Водій", "Авто",
-        "Тип авто", "Менеджер", "Статус", "Пальне", "Літри", "Ціна", "Сума", "АЗС", "Скасовано",
-    ])
+    w.writerow(
+        [
+            "Дата",
+            "Постачальник",
+            "Тип",
+            "Картка",
+            "Ідентифікатор",
+            "Авто (пост.)",
+            "Водій",
+            "Авто",
+            "Тип авто",
+            "Менеджер",
+            "Статус",
+            "Пальне",
+            "Літри",
+            "Ціна",
+            "Сума",
+            "АЗС",
+            "Скасовано",
+        ]
+    )
     for t in qs.order_by("timestamp"):
         card = t.card
         status = card.get_status_display() if card and card.status is not None else ""
-        w.writerow([
-            timezone.localtime(t.timestamp).strftime("%d.%m.%Y %H:%M:%S"), t.get_provider_display(),
-            t.get_kind_display(), card.display_number if card else t.card_ref, t.card_ref, t.vehicle_raw,
-            card.driver_name if card else "", card.vehicle if card else "",
-            card.vehicle_type.name if card and card.vehicle_type_id else "",
-            card.manager_name if card else "", status,
-            t.fuel,
-            t.liters if t.liters is not None else "", t.price if t.price is not None else "",
-            t.amount if t.amount is not None else "", t.station, "так" if t.canceled else "",
-        ])
+        w.writerow(
+            [
+                timezone.localtime(t.timestamp).strftime("%d.%m.%Y %H:%M:%S"),
+                t.get_provider_display(),
+                t.get_kind_display(),
+                card.display_number if card else t.card_ref,
+                t.card_ref,
+                t.vehicle_raw,
+                card.driver_name if card else "",
+                card.vehicle if card else "",
+                card.vehicle_type.name if card and card.vehicle_type_id else "",
+                card.manager_name if card else "",
+                status,
+                t.fuel,
+                t.liters if t.liters is not None else "",
+                t.price if t.price is not None else "",
+                t.amount if t.amount is not None else "",
+                t.station,
+                "так" if t.canceled else "",
+            ]
+        )
     return resp
+
 
 # Сторінка «Логи»: фільтр «Дія» -> набір дій журналу
 LOG_KINDS = [
@@ -280,7 +351,13 @@ def logs(request):
 
     paginator = Paginator(qs, LOGS_PER_PAGE)
     page = paginator.get_page(g.get("page"))
-    params = {"kind": kind, "provider": provider, "vtype": vtype, "mgr": mgr, "errors": "1" if errors_only else ""}
+    params = {
+        "kind": kind,
+        "provider": provider,
+        "vtype": vtype,
+        "mgr": mgr,
+        "errors": "1" if errors_only else "",
+    }
     return render(
         request,
         "fuel/logs.html",

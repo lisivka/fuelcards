@@ -98,7 +98,9 @@ class Card(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.get_provider_display()} {self.display_number} {self.vehicle} {self.driver_name}".strip()
+        return (
+            f"{self.get_provider_display()} {self.display_number} {self.vehicle} {self.driver_name}".strip()
+        )
 
     @property
     def display_number(self):
@@ -230,7 +232,9 @@ class Transaction(models.Model):
     provider = models.CharField(max_length=20, choices=Provider.choices, db_index=True)
     external_id = models.CharField(max_length=64)
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.FUEL)
-    card = models.ForeignKey(Card, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions")
+    card = models.ForeignKey(
+        Card, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
+    )
     card_ref = models.CharField(max_length=64, blank=True)
     vehicle_raw = models.CharField(max_length=200, blank=True)
     timestamp = models.DateTimeField(db_index=True)
@@ -248,9 +252,7 @@ class Transaction(models.Model):
         verbose_name = "Транзакція"
         verbose_name_plural = "Транзакції"
         ordering = ["-timestamp"]
-        constraints = [
-            models.UniqueConstraint(fields=["provider", "external_id"], name="uniq_provider_tx")
-        ]
+        constraints = [models.UniqueConstraint(fields=["provider", "external_id"], name="uniq_provider_tx")]
 
     def __str__(self):
         return f"{self.provider}:{self.external_id}"
@@ -260,6 +262,7 @@ class Transaction(models.Model):
         if self.card and self.card.vehicle:
             return self.card.vehicle
         return self.vehicle_raw
+
 
 class AuditLog(models.Model):
     """Журнал змін: хто, коли, що змінив і чи вдалося (зокрема записи в API провайдерів)."""
@@ -338,7 +341,9 @@ class AuditLog(models.Model):
         ordering = ["-created_at", "-id"]
 
     def __str__(self):
-        return f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.get_action_display()} {self.card_label}"
+        return (
+            f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.get_action_display()} {self.card_label}"
+        )
 
     @property
     def who(self) -> str:

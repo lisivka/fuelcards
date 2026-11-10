@@ -51,20 +51,24 @@ class UpgProvider(BaseProvider):
                 raise RuntimeError(f"UPG HTTP {resp.status_code}: {resp.text[:500]}")
             payload = resp.json()
             for row in payload.get("data", []):
-                ts = datetime.strptime(f"{row['transaction_date']} {row['transaction_time']}", "%Y-%m-%d %H:%M:%S")
-                items.append(NormalizedTx(
-                    provider=self.name,
-                    external_id=str(row["id"]),
-                    timestamp=aware(ts),
-                    card_ref=row.get("card_number") or "",
-                    vehicle=row.get("card_holder") or "",
-                    fuel=row.get("fuel") or "",
-                    liters=to_dec(row.get("amount")),
-                    price=to_dec(row.get("price")),
-                    amount=to_dec(row.get("total")),
-                    station=row.get("service_station") or "",
-                    raw=row,
-                ))
+                ts = datetime.strptime(
+                    f"{row['transaction_date']} {row['transaction_time']}", "%Y-%m-%d %H:%M:%S"
+                )
+                items.append(
+                    NormalizedTx(
+                        provider=self.name,
+                        external_id=str(row["id"]),
+                        timestamp=aware(ts),
+                        card_ref=row.get("card_number") or "",
+                        vehicle=row.get("card_holder") or "",
+                        fuel=row.get("fuel") or "",
+                        liters=to_dec(row.get("amount")),
+                        price=to_dec(row.get("price")),
+                        amount=to_dec(row.get("total")),
+                        station=row.get("service_station") or "",
+                        raw=row,
+                    )
+                )
             meta = payload.get("meta") or {}
             if page >= (meta.get("last_page") or 1):
                 break
