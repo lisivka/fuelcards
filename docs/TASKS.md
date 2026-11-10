@@ -10,10 +10,12 @@
 - Критерій «готово»: `ruff format --check .` без змін; тести адаптерів UPG і UkrNafta (транзакції) на знеособлених реальних відповідях, `ukrnafta_cards` і upsert у `services` з моками; мертві `upg_OLD.py`, `base_OLD.html` видалено.
 - Кроки:
   - [x] DECISIONS 006/007, відхилені задачі
-  - [ ] `ruff format` усього проєкту (окремий коміт), правило в `CLAUDE.md`/`WORKFLOW.md`
-  - [ ] видалити мертві файли
-  - [ ] проба `scripts/probes/save_fixture.py` (лише читання, знеособлення) — запуск з дозволу
-  - [ ] тести `upg`, `ukrnafta` на фікстурах; `ukrnafta_cards`; upsert і ізоляція провайдерів у `services`
+  - [x] `ruff format` усього проєкту (окремий коміт), правило в `CLAUDE.md`/`WORKFLOW.md`
+  - [x] видалити мертві файли
+  - [x] проба `scripts/probes/save_fixture.py` (лише читання, знеособлення)
+  - [ ] запуск проби (з дозволу) і перевірка фікстур очима
+  - [x] тести `ukrnafta_cards`; upsert і ізоляція провайдерів у `services`
+  - [ ] тести `upg`, `ukrnafta` (транзакції) на фікстурах
   - [ ] документація
 
 <!-- Шаблон:
