@@ -22,9 +22,9 @@ python manage.py runserver                  # http://127.0.0.1:8000 , адмін
 | Команда | Що робить |
 |---|---|
 | `python manage.py sync_fuel` | усі провайдери, типово `--days 2` |
-| `python manage.py sync_fuel --days 7` | усі провайдери, з (сьогодні − 7 днів) по сьогодні |
+| `python manage.py sync_fuel --days 7` | усі провайдери, з (сьогодні − 7 днів) по сьогодні, тобто 8 календарних днів |
 | `python manage.py sync_fuel --days 90 --provider upg --provider ukrnafta` | вибрані провайдери (`--provider` можна повторювати: `petroline`, `upg`, `ukrnafta`) |
-| `python manage.py sync_fuel --config-days` | кожен провайдер на свою «Глибину синхронізації, днів» з адмінки («Конфігурації провайдерів») |
+| `python manage.py sync_fuel --config-days` | кожен провайдер на свою «Глибину синхронізації, днів» з адмінки («Конфігурації провайдерів»), так само від (сьогодні − N) |
 | `python manage.py sync_fuel --config-period --provider petroline` | період «Синхронізувати з / по» з адмінки |
 | `python manage.py sync_fuel --help` | довідка з прикладами |
 

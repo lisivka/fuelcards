@@ -285,3 +285,13 @@ def test_command_bad_arguments_show_examples(args, fake_sync):
 
     assert "python manage.py sync_fuel --days 2" in str(exc.value)
     assert fake_sync.calls == []
+
+
+def test_help_is_printable_in_windows_console():
+    """Довідка sync_fuel друкується в консолі Windows (cp1251): «−» (U+2212) там ламав --help."""
+    from fuel.management.commands.sync_fuel import USAGE_EXAMPLES, Command
+
+    parser = Command().create_parser("manage.py", "sync_fuel")
+    for text in (USAGE_EXAMPLES, parser.format_help()):
+        text.encode("cp1251")
+    assert "N+1" in parser.format_help()

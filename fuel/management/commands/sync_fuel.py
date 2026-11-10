@@ -16,9 +16,9 @@ from fuel.services import (
 
 USAGE_EXAMPLES = f"""Приклади:
   python manage.py sync_fuel --days 2
-      усі провайдери, останні 2 дні (разом із сьогодні)
+      усі провайдери, з (сьогодні - 2 дні) по сьогодні — тобто 3 календарні дні
   python manage.py sync_fuel --days 90 --provider upg --provider ukrnafta
-      вибрані провайдери, 90 днів
+      вибрані провайдери, з (сьогодні - 90 днів) по сьогодні
   python manage.py sync_fuel --config-days
       кожен провайдер на свою глибину «Глибина синхронізації, днів» з «Конфігурації провайдера»
   python manage.py sync_fuel --config-period --provider petroline
@@ -48,7 +48,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         mode = parser.add_mutually_exclusive_group()
-        mode.add_argument("--days", type=int, help="Скільки днів назад (разом із сьогодні), типово 2")
+        mode.add_argument(
+            "--days",
+            type=int,
+            help="Період з (сьогодні - N днів) по сьогодні, тобто N+1 календарних днів; типово 2",
+        )
         mode.add_argument(
             "--config-days",
             action="store_true",
