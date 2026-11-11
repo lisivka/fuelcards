@@ -21,11 +21,13 @@
       "PowerShell(python -m ruff *)",
       "PowerShell(git status *)",
       "PowerShell(git diff *)",
-      "PowerShell(git log *)"
+      "PowerShell(git log *)",
+      "PowerShell(git checkout *)",
+      "Bash(git checkout *)"
     ],
     "ask": [
       "Bash(git commit *)",
-      "Bash(git checkout *)",
+
       "Bash(git switch *)",
       "Bash(git merge *)",
       "Bash(git rebase *)",
@@ -38,7 +40,7 @@
       "Bash(python manage.py sync_cards *)",
       "Bash(python scripts/probes/*)",
       "PowerShell(git commit *)",
-      "PowerShell(git checkout *)",
+
       "PowerShell(git reset *)",
       "PowerShell(pip install *)",
       "PowerShell(python manage.py migrate *)",
