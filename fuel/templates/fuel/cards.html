@@ -124,6 +124,22 @@
         white-space: nowrap;
     }
 
+    .count-line {
+        margin: -4px 0 8px;
+        min-height: 1.2em;
+    }
+
+    td.num {
+        color: #777;
+        text-align: right;
+    }
+
+    label.wt-label {
+        display: block;
+        margin-top: 4px;
+        white-space: nowrap;
+    }
+
     .sync-btn:disabled {
         cursor: wait;
         opacity: 0.6;
@@ -160,6 +176,12 @@
             <button type="button" class="seg-btn" data-s="inactive">Неактивні</button>
         </span>
 
+        <select id="f-water" autocomplete="off" title="Картки на пальне чи на воду: картки на воду типово приховані, з бази не видаляються">
+            <option value="fuel" selected>Пальне</option>
+            <option value="water">Вода ({{ water_count }})</option>
+            <option value="all">Усі карти</option>
+        </select>
+
         <input
             id="f-number"
             type="search"
@@ -189,8 +211,6 @@
             {% for value, label in manager_filters %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select>
 
-        <span id="count" class="muted"></span>
-
         {% for b in sync_buttons %}
             <button
                 type="button"
@@ -213,9 +233,12 @@
         {% endif %}
     </div>
 
+    <div id="count" class="muted count-line"></div>
+
     <table id="tbl">
         <thead>
             <tr>
+                <th title="Порядковий номер у поточному відборі">№</th>
                 <th>Постачальник</th>
                 <th>Номер картки</th>
                 <th>Ідентифікатор</th>
@@ -242,7 +265,9 @@
                     data-mismatch="{% if r.pl_mismatch %}1{% else %}0{% endif %}"
                     data-vtype="{{ r.vehicle_type_id|default_if_none:'' }}"
                     data-mgr="{{ r.manager_id|default_if_none:'' }}"
+                    data-water="{% if r.is_water %}1{% else %}0{% endif %}"
                 >
+                    <td class="num">{{ forloop.counter }}</td>
                     <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
                     <td>{% if r.ext_number %}{{ r.number }}{% else %}<span class="muted">—</span>{% endif %}</td>
@@ -307,11 +332,14 @@
                         {% else %}
                         <a href="{% url 'card_detail' r.id %}?back=cards" title="Авто/ПІБ картки Petroline змінюються на сторінці картки">Змінити на сторінці картки</a>
                         {% endif %}
+                        <label class="wt-label muted" title="Картка на воду, не на пальне: лише в нашій базі; після ручної зміни «Оновити карти» позначку не чіпає">
+                            <input type="checkbox" class="wt"{% if r.is_water %} checked{% endif %}> вода<span class="wt-manual">{% if r.is_water_manual %} (вручну){% endif %}</span>
+                        </label>
                     </td>
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="10">
+                    <td colspan="11">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -411,6 +439,9 @@
             mgr = app.dataset.me;
         }
 
+        // "fuel" — картки на пальне (типово), "water" — лише на воду, "all" — усі
+        var water = document.getElementById("f-water").value;
+
         var shown = 0;
 
         rows.forEach(function (tr) {
@@ -419,6 +450,8 @@
                 (!mismatchOnly || tr.dataset.mismatch === "1") &&
                 (!state ||
                     (state === "active") === (tr.dataset.status === "0")) &&
+                (water === "all" ||
+                    (water === "water") === (tr.dataset.water === "1")) &&
                 (!number ||
                     tr.dataset.search.toLowerCase().includes(number)) &&
                 (!vehicle ||
@@ -436,11 +469,22 @@
 
             if (matches) {
                 shown++;
+                // Нумерація лише видимих рядків: 1..N у поточному відборі
+                tr.querySelector("td.num").textContent = shown;
             }
         });
 
+        var waterTotal = rows.filter(function (tr) {
+            return tr.dataset.water === "1";
+        }).length;
+
+        document.querySelector('#f-water option[value="water"]').textContent =
+            "Вода (" + waterTotal + ")";
+        // Рядок завжди однакового вигляду в усіх відборах — інтерфейс не смикається
         document.getElementById("count").textContent =
-            "Показано " + shown + " з " + rows.length;
+            "Показано " + shown + " з " + rows.length +
+            " · карток на воду: " + waterTotal +
+            (water === "fuel" ? " (приховано)" : "");
     }
 
     var mismatchBtn = document.getElementById("f-mismatch");
@@ -484,7 +528,7 @@
 
             state = button.dataset.s;
 
-            document.querySelectorAll(".seg-btn").forEach(
+            this.querySelectorAll(".seg-btn").forEach(
                 function (seg) {
                     seg.classList.toggle("active", seg === button);
                 }
@@ -494,7 +538,7 @@
         }
     );
 
-    ["f-number", "f-vehicle", "f-driver", "f-vtype", "f-mgr"].forEach(
+    ["f-number", "f-vehicle", "f-driver", "f-vtype", "f-mgr", "f-water"].forEach(
         function (id) {
             document.getElementById(id).addEventListener(
                 "input",
@@ -535,6 +579,47 @@
             flash(error.message, false);
         }).then(function () {
             select.disabled = false;
+        });
+    });
+
+    // Позначка «вода» в рядку: зберігається одразу, лише в нашій базі.
+
+    tbody.addEventListener("change", function (event) {
+        var box = event.target.closest("input.wt");
+
+        if (!box) {
+            return;
+        }
+
+        var tr = box.closest("tr[data-id]");
+        var previous = tr.dataset.water === "1";
+
+        box.disabled = true;
+
+        post("/cards/" + tr.dataset.id + "/water/", {
+            is_water: box.checked
+        }).then(function (result) {
+            tr.dataset.water = result.card.is_water ? "1" : "0";
+            box.checked = result.card.is_water;
+            tr.querySelector(".wt-manual").textContent =
+                result.card.is_water_manual ? " (вручну)" : "";
+
+            var water = document.getElementById("f-water").value;
+            var hidden = water !== "all" &&
+                (water === "water") !== result.card.is_water;
+
+            flash(
+                "Картка " + tr.dataset.number + ": " +
+                (result.card.is_water ? "позначено як картку на воду" : "позначку «вода» знято") +
+                (hidden ? " — за поточним фільтром рядок приховано" : ""),
+                true
+            );
+            applyFilters();
+        }).catch(function (error) {
+            box.checked = previous;
+            flash(error.message, false);
+        }).then(function () {
+            box.disabled = false;
         });
     });
 

@@ -105,7 +105,7 @@ class CardAdmin(admin.ModelAdmin):
         "status",
         "status_updated_at",
     )
-    list_filter = ("provider", "status", "vehicle_type", "manager")
+    list_filter = ("provider", "status", "is_water", "vehicle_type", "manager")
     list_select_related = ("vehicle_type", "manager")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):

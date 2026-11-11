@@ -56,6 +56,7 @@ def cards(request):
             "provider_colors": ProviderConfig.row_colors(),
             "duplicates_count": len(svc.person_duplicates()),
             "mismatch_count": sum(1 for r in rows if r["pl_mismatch"]),
+            "water_count": sum(1 for r in rows if r["is_water"]),
             "limits_help": limits.HELP_TEXT,
             "sync_buttons": [
                 {"provider": code, "label": label, "kind": "cards"}
@@ -153,6 +154,23 @@ def card_manager(request, pk):
     def run():
         manager = managers.parse_manager(data.get("manager"), current_id=card.manager_id)
         changed = svc.set_manager(card, manager, user=request.user)
+        return {"card": _json_card(card), "changed": changed}
+
+    return _safe(run)
+
+
+@login_required
+@require_POST
+def card_water(request, pk):
+    """Позначка «картка на воду» зі списку «Карти»: лише в нашій базі, після цього синхронізація її не змінює."""
+    card = get_object_or_404(Card, pk=pk)
+    data = _body(request)
+
+    def run():
+        value = data.get("is_water")
+        if not isinstance(value, bool):
+            raise ValueError("Некоректне значення позначки «вода»")
+        changed = svc.set_water(card, value, user=request.user)
         return {"card": _json_card(card), "changed": changed}
 
     return _safe(run)
@@ -315,6 +333,13 @@ def _card_detail_post(request, card: Card) -> None:
                 messages.success(request, "Авто/ПІБ взято з Petroline (змінено лише в нашій базі).")
             else:
                 messages.info(request, "Змін немає: наші дані вже як у Petroline.")
+        elif action == "water":
+            is_water = request.POST.get("is_water") == "1"
+            if svc.set_water(card, is_water, user=request.user):
+                word = "позначено як картку на воду" if is_water else "позначку «вода» знято"
+                messages.success(request, f"Картку {word} (лише в нашій базі).")
+            else:
+                messages.info(request, "Змін немає.")
         elif action == "limits":
             svc.refresh_limits(card, strict=True)
             messages.success(request, f"Ліміти оновлено: {card.limits_short or 'лімітів на пальне немає'}.")
