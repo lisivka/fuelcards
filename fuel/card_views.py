@@ -161,6 +161,23 @@ def card_manager(request, pk):
 
 @login_required
 @require_POST
+def cards_bulk(request):
+    """Масова зміна типу авто або менеджера відмічених на «Картах» карток (лише в нашій базі)."""
+    data = _body(request)
+
+    def run():
+        ids = data.get("ids")
+        if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+            raise ValueError("Некоректний список карток")
+        result = svc.bulk_assign(ids, data.get("field"), data.get("value"), user=request.user)
+        result["cards"] = [_json_card(card) for card in result["cards"]]
+        return result
+
+    return _safe(run)
+
+
+@login_required
+@require_POST
 def card_water(request, pk):
     """Позначка «картка на воду» зі списку «Карти»: лише в нашій базі, після цього синхронізація її не змінює."""
     card = get_object_or_404(Card, pk=pk)

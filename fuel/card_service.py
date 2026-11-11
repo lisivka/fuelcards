@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from . import limits as lim
 from .audit import record_sync, username_of
-from .managers import user_label
+from .managers import parse_manager, user_label
 from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, VehicleType
 from .providers import petroline_cards as pl
 from .providers.petroline_cards import PetrolineCards
@@ -561,6 +561,48 @@ def set_manager(card: Card, manager, *, user=None) -> bool:
         card.save(update_fields=["manager"])
         record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
     return True
+
+
+BULK_FIELDS = ("vehicle_type", "manager")
+BULK_MAX_CARDS = 2000
+
+
+def bulk_assign(card_ids: list[int], field: str, value, *, user=None) -> dict:
+    """Масова зміна типу авто або менеджера відмічених карток (лише в нашій базі).
+
+    Значення перевіряється до будь-яких змін; кожна змінена картка — окремий запис аудиту,
+    як при зміні в рядку. Усе в одній транзакції: або змінено всі, або жодної.
+    Повертає лічильники `changed`, `unchanged`, `missing`, назву значення `label` і змінені картки.
+    """
+    if field not in BULK_FIELDS:
+        raise ValueError("Невідоме поле для масової зміни")
+    if not card_ids:
+        raise ValueError("Не відмічено жодної картки")
+    if len(card_ids) > BULK_MAX_CARDS:
+        raise ValueError(f"Забагато карток за раз (більше {BULK_MAX_CARDS})")
+    if field == "vehicle_type":
+        new_value = parse_vehicle_type(value)
+        label = new_value.name if new_value else ""
+        setter = set_vehicle_type
+    else:
+        # Масово — лише активні менеджери з групи; поточного «не менеджера» можна тільки зняти
+        new_value = parse_manager(value)
+        label = user_label(new_value)
+        setter = set_manager
+    ids = set(card_ids)
+    cards = list(Card.objects.filter(pk__in=ids).select_related("vehicle_type", "manager").order_by("pk"))
+    changed = 0
+    with transaction.atomic():
+        for card in cards:
+            if setter(card, new_value, user=user):
+                changed += 1
+    return {
+        "changed": changed,
+        "unchanged": len(cards) - changed,
+        "missing": len(ids) - len(cards),
+        "label": label,
+        "cards": cards,
+    }
 
 
 def set_water(card: Card, is_water: bool, *, user=None) -> bool:
