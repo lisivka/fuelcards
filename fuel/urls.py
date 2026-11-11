@@ -9,6 +9,7 @@ urlpatterns = [
     path("cards/", card_views.cards, name="cards"),
     path("cards/create/", card_views.card_create, name="card_create"),
     path("cards/sync/", card_views.cards_sync, name="cards_sync"),
+    path("cards/bulk/", card_views.cards_bulk, name="cards_bulk"),
     path("cards/duplicates/", card_views.card_duplicates, name="card_duplicates"),
     path("cards/<int:pk>/", card_views.card_detail, name="card_detail"),
     path("cards/<int:pk>/info/", card_views.card_info, name="card_info"),

@@ -144,6 +144,31 @@
         cursor: wait;
         opacity: 0.6;
     }
+
+    .bulk {
+        display: none;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        border: 1px solid #1f3a5f;
+        border-radius: 4px;
+        background: #eef3f9;
+    }
+
+    .bulk.on {
+        display: flex;
+    }
+
+    .bulk .sep {
+        color: #999;
+    }
+
+    th.sel, td.sel {
+        width: 1%;
+        text-align: center;
+    }
 </style>
 {% include "fuel/_provider_colors.html" %}
 {% endblock %}
@@ -235,9 +260,29 @@
 
     <div id="count" class="muted count-line"></div>
 
+    <div id="bulk" class="bulk" role="group" aria-label="Масова зміна відмічених карток">
+        <strong>Відмічено: <span id="bulk-count">0</span></strong>
+        <span class="sep">·</span>
+        <select id="bulk-vtype" title="Новий тип авто для відмічених карток">
+            <option value="">— зняти тип</option>
+            {% for vt in vehicle_types %}<option value="{{ vt.pk }}">{{ vt.name }}</option>{% endfor %}
+        </select>
+        <button type="button" class="bulk-btn" data-field="vehicle_type">Змінити тип авто</button>
+        <span class="sep">·</span>
+        <select id="bulk-mgr" title="Новий менеджер для відмічених карток">
+            <option value="">— зняти менеджера</option>
+            {% for pk, label in manager_options %}<option value="{{ pk }}">{{ label }}</option>{% endfor %}
+        </select>
+        <button type="button" class="bulk-btn" data-field="manager">Змінити менеджера</button>
+        <span class="sep">·</span>
+        <button type="button" id="bulk-clear">Зняти відмітки</button>
+        <span class="muted">Зміна лише в нашій базі, кожна картка — у журналі аудиту</span>
+    </div>
+
     <table id="tbl">
         <thead>
             <tr>
+                <th class="sel"><input type="checkbox" id="sel-all" title="Відмітити всі видимі картки" autocomplete="off"></th>
                 <th title="Порядковий номер у поточному відборі">№</th>
                 <th>Постачальник</th>
                 <th>Номер картки</th>
@@ -267,6 +312,7 @@
                     data-mgr="{{ r.manager_id|default_if_none:'' }}"
                     data-water="{% if r.is_water %}1{% else %}0{% endif %}"
                 >
+                    <td class="sel"><input type="checkbox" class="sel-box" title="Відмітити для масової зміни" autocomplete="off"></td>
                     <td class="num">{{ forloop.counter }}</td>
                     <td>{{ r.provider_label }}{% if r.pl_type %}<div class="muted">{{ r.pl_type }}</div>{% endif %}</td>
                     <td><a href="{% url 'card_detail' r.id %}?back=cards" title="Сторінка картки">{{ r.display_number }}</a></td>
@@ -339,7 +385,7 @@
                 </tr>
             {% empty %}
                 <tr>
-                    <td colspan="11">
+                    <td colspan="12">
                         Карток поки немає{% if sync_buttons %}. Натисніть кнопку оновлення карток вище{% endif %}.
                     </td>
                 </tr>
@@ -467,7 +513,10 @@
 
             tr.style.display = matches ? "" : "none";
 
-            if (matches) {
+            if (!matches) {
+                // Прихована картка не може лишатися відміченою: масова зміна — лише видимого
+                tr.querySelector(".sel-box").checked = false;
+            } else {
                 shown++;
                 // Нумерація лише видимих рядків: 1..N у поточному відборі
                 tr.querySelector("td.num").textContent = shown;
@@ -485,7 +534,133 @@
             "Показано " + shown + " з " + rows.length +
             " · карток на воду: " + waterTotal +
             (water === "fuel" ? " (приховано)" : "");
+
+        updateBulk();
     }
+
+    // Масова зміна типу авто / менеджера відмічених карток.
+
+    var bulkPanel = document.getElementById("bulk");
+    var selAll = document.getElementById("sel-all");
+
+    function selectedRows() {
+        return rows.filter(function (tr) {
+            return tr.style.display !== "none" && tr.querySelector(".sel-box").checked;
+        });
+    }
+
+    function updateBulk() {
+        var visible = rows.filter(function (tr) {
+            return tr.style.display !== "none";
+        });
+        var count = selectedRows().length;
+
+        document.getElementById("bulk-count").textContent = count;
+        bulkPanel.classList.toggle("on", count > 0);
+        selAll.checked = count > 0 && count === visible.length;
+        selAll.indeterminate = count > 0 && count < visible.length;
+    }
+
+    selAll.addEventListener("change", function () {
+        var checked = selAll.checked;
+
+        rows.forEach(function (tr) {
+            if (tr.style.display !== "none") {
+                tr.querySelector(".sel-box").checked = checked;
+            }
+        });
+        updateBulk();
+    });
+
+    tbody.addEventListener("change", function (event) {
+        if (event.target.closest("input.sel-box")) {
+            updateBulk();
+        }
+    });
+
+    document.getElementById("bulk-clear").addEventListener("click", function () {
+        rows.forEach(function (tr) {
+            tr.querySelector(".sel-box").checked = false;
+        });
+        updateBulk();
+    });
+
+    // Оновлює рядок за відповіддю сервера (тип авто й менеджер).
+    function applyCardRow(tr, card) {
+        tr.dataset.vtype = card.vehicle_type_id === null ? "" : String(card.vehicle_type_id);
+        tr.querySelector("select.vt").value = tr.dataset.vtype;
+        tr.dataset.mgr = card.manager_id === null ? "" : String(card.manager_id);
+        tr.querySelector("select.mg").value = tr.dataset.mgr;
+    }
+
+    var bulkButtons = Array.prototype.slice.call(
+        document.querySelectorAll(".bulk-btn")
+    );
+
+    bulkButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+            var field = button.dataset.field;
+            var select = document.getElementById(field === "manager" ? "bulk-mgr" : "bulk-vtype");
+            var what = field === "manager" ? "менеджера" : "тип авто";
+            var selected = selectedRows();
+
+            if (!selected.length) {
+                return;
+            }
+
+            var question = select.value
+                ? "Встановити " + what + " «" + select.selectedOptions[0].textContent + "»"
+                : "Зняти " + what;
+
+            if (!confirm(question + " для відмічених карток: " + selected.length + "?")) {
+                return;
+            }
+
+            bulkButtons.forEach(function (b) {
+                b.disabled = true;
+            });
+
+            post("/cards/bulk/", {
+                ids: selected.map(function (tr) {
+                    return parseInt(tr.dataset.id, 10);
+                }),
+                field: field,
+                value: select.value
+            }).then(function (result) {
+                var byId = {};
+
+                result.cards.forEach(function (card) {
+                    byId[card.id] = card;
+                });
+                selected.forEach(function (tr) {
+                    if (byId[tr.dataset.id]) {
+                        applyCardRow(tr, byId[tr.dataset.id]);
+                    }
+                });
+
+                var title = (field === "manager" ? "Менеджер" : "Тип авто") + " «" +
+                    (result.label || (field === "manager" ? "не призначено" : "не вказано")) + "»";
+
+                applyFilters();
+
+                var hidden = selected.length - selectedRows().length;
+
+                flash(
+                    title + ": змінено " + result.changed +
+                    (result.unchanged ? ", вже був " + result.unchanged : "") +
+                    (result.missing ? ", не знайдено в базі " + result.missing : "") +
+                    (hidden ? " — за поточним фільтром рядків приховано: " + hidden : ""),
+                    true
+                );
+            }).catch(function (error) {
+                flash(error.message, false);
+            }).then(function () {
+                bulkButtons.forEach(function (b) {
+                    b.disabled = false;
+                });
+            });
+        });
+    });
 
     var mismatchBtn = document.getElementById("f-mismatch");
     if (mismatchBtn) {
