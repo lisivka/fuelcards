@@ -88,6 +88,11 @@ class Card(models.Model):
     # Petroline — ліміти її водія. Порожній список — лімітів немає або ще не читали (див. limits_updated_at)
     fuel_limits = models.JSONField("Ліміти на пальне", default=list, blank=True)
     limits_updated_at = models.DateTimeField("Ліміти оновлено", null=True, blank=True)
+    # Картка на воду, не на пальне (fuel/water.py): на «Картах» типово прихована, з бази не видаляється.
+    # Petroline — автоматично за словом «вода» в назві при «Оновити карти»; якщо менеджер змінив позначку
+    # вручну (is_water_manual), синхронізація її більше не чіпає
+    is_water = models.BooleanField("Картка на воду", default=False, db_index=True)
+    is_water_manual = models.BooleanField("Позначку «вода» задано вручну", default=False)
 
     class Meta:
         verbose_name = "Картка"
@@ -304,6 +309,7 @@ class AuditLog(models.Model):
         "status": "Статус",
         "vehicle_type": "Тип авто",
         "manager": "Менеджер",
+        "is_water": "Картка на воду",
     }
 
     created_at = models.DateTimeField("Коли", auto_now_add=True, db_index=True)
@@ -380,6 +386,8 @@ class AuditLog(models.Model):
             label = self.FIELD_LABELS.get(field, field)
             if field == "status":
                 old, new = _status_label(old), _status_label(new)
+            elif isinstance(old, bool) or isinstance(new, bool):
+                old, new = _yes_no(old), _yes_no(new)
             lines.append(f"{label}: «{old or ''}» → «{new or ''}»")
         return lines
 
@@ -389,6 +397,10 @@ def _fmt_date(value: str) -> str:
         return date.fromisoformat(value).strftime("%d.%m.%Y")
     except (TypeError, ValueError):
         return str(value)
+
+
+def _yes_no(value) -> str:
+    return "—" if value is None else ("так" if value else "ні")
 
 
 def _status_label(value) -> str:

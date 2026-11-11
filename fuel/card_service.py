@@ -12,6 +12,7 @@ from .models import AuditLog, Card, CardStatus, Provider, ProviderConfig, Vehicl
 from .providers import petroline_cards as pl
 from .providers.petroline_cards import PetrolineCards
 from .providers.ukrnafta_cards import UkrnaftaCards
+from .water import has_water_word
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ def serialize(card: Card, editable: dict | None = None) -> dict:
         "pl_label": card.provider_label,
         "limits_short": card.limits_short,
         "limits_updated": card.limits_updated_at,
+        "is_water": card.is_water,
+        "is_water_manual": card.is_water_manual,
     }
 
 
@@ -116,6 +119,9 @@ def sync_petroline_cards() -> tuple[int, int, str]:
     розбіжність видно на сторінці картки, рішення за користувачем. Як картка записана в Petroline
     зараз — у `provider_label`.
 
+    Позначка «картка на воду» (fuel/water.py) ставиться/знімається за словом «вода» в назві,
+    якщо менеджер не задав її вручну.
+
     Ліміти водіїв читаються тут же одним запитом. Якщо не прочитались — картки все одно оновлюються,
     у карток лишається попередній знімок лімітів, а третій елемент результату — текст попередження.
     """
@@ -147,6 +153,8 @@ def sync_petroline_cards() -> tuple[int, int, str]:
             if limits_by_person is not None:
                 card.fuel_limits = limits_by_person.get(card.provider_person_id, [])
                 card.limits_updated_at = now
+            if not card.is_water_manual:
+                card.is_water = has_water_word(card.provider_label, card.vehicle, card.driver_name)
             card.save()
             created += was_created
             updated += not was_created
@@ -551,6 +559,23 @@ def set_manager(card: Card, manager, *, user=None) -> bool:
     with transaction.atomic():
         card.manager = manager
         card.save(update_fields=["manager"])
+        record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
+    return True
+
+
+def set_water(card: Card, is_water: bool, *, user=None) -> bool:
+    """Позначка «картка на воду» вручну — лише в нашій базі; далі синхронізація її не змінює.
+
+    Повертає False, якщо змін немає.
+    """
+    is_water = bool(is_water)
+    if card.is_water == is_water:
+        return False
+    changes = {"is_water": [card.is_water, is_water]}
+    with transaction.atomic():
+        card.is_water = is_water
+        card.is_water_manual = True
+        card.save(update_fields=["is_water", "is_water_manual"])
         record_audit(AuditLog.Action.CARD_INFO, card, user, changes=changes)
     return True
 

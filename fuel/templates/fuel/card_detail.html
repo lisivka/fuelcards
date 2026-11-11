@@ -78,6 +78,18 @@ tr.dim td{color:#999}
       <dt>Менеджер</dt><dd>{% if card.manager_id %}{{ card.manager_name }}{% if card.manager.email %} · <a href="mailto:{{ card.manager.email }}">{{ card.manager.email }}</a>{% endif %}{% else %}<span class="dim">не призначено</span>{% endif %}</dd>
       <dt>Статус</dt><dd>{% if card.status is not None %}{{ card.get_status_display }}{% else %}<span class="dim">невідомо</span>{% endif %}</dd>
       <dt>Статус оновлено</dt><dd>{{ card.status_updated_at|date:"d.m.Y H:i"|default:"—" }}</dd>
+      <dt>Картка на воду</dt>
+      <dd>
+        {% if card.is_water %}<b>так</b>{% else %}ні{% endif %}
+        <span class="dim">· {% if card.is_water_manual %}задано вручну{% else %}автоматично за словом «вода» в назві{% endif %}</span>
+        <form method="post" style="display:inline;margin-left:6px">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="water">
+          <input type="hidden" name="back" value="{{ back }}">
+          <input type="hidden" name="is_water" value="{% if card.is_water %}0{% else %}1{% endif %}">
+          <button class="btn" title="Лише в нашій базі; після ручної зміни «Оновити карти» позначку не чіпає. Картки на воду на «Картах» типово приховані">{% if card.is_water %}Зняти позначку{% else %}Позначити як воду{% endif %}</button>
+        </form>
+      </dd>
       <dt>Ліміти <span class="help" title="{{ limits_help }}">?</span></dt>
       <dd>
         {% if limits_lines %}

@@ -14,6 +14,7 @@ urlpatterns = [
     path("cards/<int:pk>/info/", card_views.card_info, name="card_info"),
     path("cards/<int:pk>/vehicle-type/", card_views.card_vehicle_type, name="card_vehicle_type"),
     path("cards/<int:pk>/manager/", card_views.card_manager, name="card_manager"),
+    path("cards/<int:pk>/water/", card_views.card_water, name="card_water"),
     path("cards/<int:pk>/status/", card_views.card_status, name="card_status"),
     path("cards/<int:pk>/delete/", card_views.card_delete, name="card_delete"),
 ]
