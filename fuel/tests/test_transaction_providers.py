@@ -227,11 +227,109 @@ def test_ukrnafta_http_error_raises(monkeypatch, ukrnafta_env):
         UkrnaftaProvider().fetch(date(2026, 11, 9), date(2026, 11, 9))
 
 
-def test_ukrnafta_reads_single_page_only(monkeypatch, ukrnafta_env):
-    """Поточне обмеження (окрема задача в TASKS.md): один запит, до 1000 рядків, без пагінації."""
+def test_ukrnafta_single_short_page_is_one_request(monkeypatch, ukrnafta_env):
+    """Реальна відповідь: 4 рядки менше за розмір сторінки — більше сторінок не просимо."""
     calls = fake_ukrnafta(monkeypatch, load("ukrnafta_transactions.json"))
 
     UkrnaftaProvider().fetch(date(2026, 10, 10), date(2026, 11, 9))
 
     assert len(calls) == 1
-    assert (calls[0][1]["params"]["page"], calls[0][1]["params"]["limit"]) == (0, 1000)
+    assert (calls[0][1]["params"]["page"], calls[0][1]["params"]["limit"]) == (0, ukrnafta.PAGE_SIZE)
+
+
+# --- UkrNafta, пагінація (формат перевірено пробою 2026-11-11: page з 0, countOfRows — усього) ---
+
+
+def fuel_rows(count: int, start: int = 1) -> list[dict]:
+    base = next(r for r in load("ukrnafta_transactions.json")["transactions"] if r["typeId"] == 302)
+    return [{**base, "transactionId": start + i} for i in range(count)]
+
+
+def fake_ukrnafta_pages(monkeypatch, pages: list, total: int | None) -> list[int]:
+    """Сторінки за номером `page`; за межами списку — порожня сторінка, як у реального API."""
+    requested = []
+
+    def get(url, **kwargs):
+        page = kwargs["params"]["page"]
+        requested.append(page)
+        item = pages[page] if page < len(pages) else []
+        if isinstance(item, FakeResponse):
+            return item
+        return FakeResponse({"errorCode": 0, "countOfRows": total, "transactions": item})
+
+    monkeypatch.setattr(ukrnafta.requests, "get", get)
+    monkeypatch.setattr(ukrnafta, "PAGE_SIZE", 2)
+    return requested
+
+
+def ids_of(items) -> list[str]:
+    return [i.external_id for i in items]
+
+
+def test_ukrnafta_reads_all_pages_until_short_page(monkeypatch, ukrnafta_env):
+    rows = fuel_rows(5)
+    requested = fake_ukrnafta_pages(monkeypatch, [rows[0:2], rows[2:4], rows[4:5]], total=5)
+
+    items = UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))
+
+    assert ids_of(items) == ["1", "2", "3", "4", "5"]
+    assert requested == [0, 1, 2]
+
+
+def test_ukrnafta_stops_when_count_of_rows_reached(monkeypatch, ukrnafta_env):
+    """Остання сторінка повна: зупиняємось за countOfRows, без зайвого запиту порожньої сторінки."""
+    rows = fuel_rows(4)
+    requested = fake_ukrnafta_pages(monkeypatch, [rows[0:2], rows[2:4]], total=4)
+
+    assert len(UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))) == 4
+    assert requested == [0, 1]
+
+
+def test_ukrnafta_stops_on_empty_page_without_count(monkeypatch, ukrnafta_env):
+    rows = fuel_rows(4)
+    requested = fake_ukrnafta_pages(monkeypatch, [rows[0:2], rows[2:4]], total=None)
+
+    assert len(UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))) == 4
+    assert requested == [0, 1, 2]
+
+
+def test_ukrnafta_drops_duplicates_between_pages(monkeypatch, ukrnafta_env):
+    """Нова транзакція між запитами зсуває сторінки: повтор на межі відкидається."""
+    rows = fuel_rows(4)
+    requested = fake_ukrnafta_pages(monkeypatch, [rows[0:2], rows[1:3], rows[3:4]], total=4)
+
+    assert ids_of(UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))) == ["1", "2", "3", "4"]
+    assert requested == [0, 1, 2]
+
+
+def test_ukrnafta_error_on_later_page_fails_whole_run(monkeypatch, ukrnafta_env):
+    """Збій другої сторінки — збій усього запуску: частину періоду мовчки не зберігаємо."""
+    rows = fuel_rows(4)
+    fake_ukrnafta_pages(monkeypatch, [rows[0:2], FakeResponse({}, status_code=500)], total=4)
+
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))
+
+
+def test_ukrnafta_warns_when_fewer_rows_than_count(monkeypatch, ukrnafta_env, caplog):
+    fake_ukrnafta_pages(monkeypatch, [fuel_rows(1)], total=3)
+
+    with caplog.at_level("WARNING", logger="fuel.providers.ukrnafta"):
+        assert len(UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))) == 1
+
+    assert "отримано 1 транзакцій з 3" in caplog.text
+
+
+def test_ukrnafta_page_limit_guard(monkeypatch, ukrnafta_env):
+    """API, що без кінця віддає повні сторінки, не зациклює синхронізацію."""
+    monkeypatch.setattr(ukrnafta, "MAX_PAGES", 3)
+    counter = iter(range(1, 1000))
+
+    def get(url, **kwargs):
+        batch = fuel_rows(2, start=next(counter) * 10)
+        return FakeResponse({"errorCode": 0, "countOfRows": None, "transactions": batch})
+
+    monkeypatch.setattr(ukrnafta.requests, "get", get)
+    monkeypatch.setattr(ukrnafta, "PAGE_SIZE", 2)
+    with pytest.raises(RuntimeError, match="понад 3 сторінок"):
+        UkrnaftaProvider().fetch(date(2026, 11, 1), date(2026, 11, 9))
